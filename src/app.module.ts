@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
+import { ExampleModule } from './modules/example.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -29,6 +30,9 @@ import { getRedisConfig } from './config/redis.config';
       inject: [ConfigService],
       isGlobal: true,
     }),
+
+    //业务模块
+    ExampleModule,
   ],
   controllers: [AppController],
   providers: [AppService],
