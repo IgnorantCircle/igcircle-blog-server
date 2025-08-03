@@ -7,9 +7,17 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   // 启用CORS
+  const corsOrigins: (string | RegExp)[] =
+    configService
+      .get<string>('CORS_ORIGIN')
+      ?.split(',')
+      .map((origin: string) => origin.trim()) || [];
+
   app.enableCors({
-    origin: true,
-    credentials: true,
+    origin: corsOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // 允许的HTTP方法
+    allowedHeaders: ['Content-Type', 'Authorization'], // 允许的请求头
+    credentials: true, // 允许携带Cookie（需前端配合设置withCredentials）
   });
   // 全局路由前缀
   app.setGlobalPrefix('api');
