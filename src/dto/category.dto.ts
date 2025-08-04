@@ -118,6 +118,11 @@ export class CategoryQueryDto extends PaginationSortDto {
   @IsString()
   name?: string;
 
+  @ApiPropertyOptional({ description: 'url别名' })
+  @IsOptional()
+  @IsString()
+  slug?: string;
+
   @ApiPropertyOptional({ description: '描述' })
   @IsOptional()
   @IsString()
@@ -133,7 +138,6 @@ export class CategoryQueryDto extends PaginationSortDto {
   @IsOptional()
   @IsString()
   parentName?: string;
-  
   @ApiPropertyOptional({ description: '是否包含子分类', default: false })
   @IsOptional()
   @IsBoolean()

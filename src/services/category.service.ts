@@ -72,6 +72,7 @@ export class CategoryService {
       page = 1,
       limit = 10,
       name,
+      slug,
       isActive,
       parentName,
       includeChildren = false,
@@ -91,6 +92,12 @@ export class CategoryService {
     if (name) {
       queryBuilder.andWhere('(category.name LIKE :name)', {
         name: `%${name}%`,
+      });
+    }
+
+    if (slug) {
+      queryBuilder.andWhere('(category.slug LIKE :slug)', {
+        slug: `%${slug}%`,
       });
     }
 
