@@ -5,7 +5,7 @@ import {
   Body,
   Param,
   Query,
-  ParseIntPipe,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ResponseUtil } from '@/common/utils/response.util';
@@ -16,16 +16,7 @@ import {
   ConflictException,
 } from '@/common/exceptions/business.exception';
 import { PaginationDto } from '@/common/dto/pagination.dto';
-// 定义创建数据的接口
-interface CreateExampleDto {
-  [key: string]: any;
-}
 
-// 定义返回数据的接口
-interface CreatedExampleDto extends CreateExampleDto {
-  id: number;
-  createdAt: Date;
-}
 @ApiTags('示例接口')
 @Controller('examples')
 export class ExampleController {
@@ -69,8 +60,8 @@ export class ExampleController {
   @Post('created')
   @ApiOperation({ summary: '创建响应示例' })
   @ApiResponse({ status: 201, description: '创建成功' })
-  postCreated(@Body() data: CreateExampleDto): CreatedExampleDto {
-    return { id: 1, ...data, createdAt: new Date() };
+  postCreated(@Body() data: any) {
+    return { id: "1251648161", ...data, createdAt: new Date() };
   }
 
   @Get('not-found')
@@ -115,8 +106,8 @@ export class ExampleController {
   @ApiOperation({ summary: '获取用户示例（带参数验证）' })
   @ApiResponse({ status: 200, description: '获取成功' })
   @ApiResponse({ status: 404, description: '用户不存在' })
-  getUser(@Param('id', ParseIntPipe) id: number) {
-    if (id === 999) {
+  getUser(@Param('id', ParseUUIDPipe) id: string) {
+    if (id === '00000000-0000-0000-0000-000000000999') {
       throw new NotFoundException('用户');
     }
     return { id, name: `用户${id}`, email: `user${id}@example.com` };

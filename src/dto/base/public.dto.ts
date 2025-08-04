@@ -7,7 +7,7 @@ import { Exclude, Expose, Transform } from 'class-transformer';
 export class PublicUserDto {
   @ApiProperty({ description: '用户ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '用户名' })
   @Expose()
@@ -53,7 +53,7 @@ export class PublicUserDto {
 export class PublicArticleDto {
   @ApiProperty({ description: '文章ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '标题' })
   @Expose()
@@ -102,7 +102,7 @@ export class PublicArticleDto {
 
   @ApiProperty({ description: '作者信息', type: PublicUserDto })
   @Expose()
-  @Transform(({ value }) => (value ? new PublicUserDto() : null))
+  @Transform(({ value }) => value ? new PublicUserDto() : null)
   author: PublicUserDto;
 
   // 管理信息不暴露给公共API
@@ -157,7 +157,7 @@ export class PublicArticleDetailDto extends PublicArticleDto {
 export class PublicCategoryDto {
   @ApiProperty({ description: '分类ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '分类名称' })
   @Expose()
@@ -198,7 +198,7 @@ export class PublicCategoryDto {
 export class PublicTagDto {
   @ApiProperty({ description: '标签ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '标签名称' })
   @Expose()

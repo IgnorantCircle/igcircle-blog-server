@@ -47,7 +47,7 @@ export class UserService {
     return savedUser;
   }
 
-  async findById(id: number): Promise<User> {
+  async findById(id: string): Promise<User> {
     // 先从缓存中查找
     const cacheKey = `user:${id}`;
     const cachedUser = await this.cacheManager.get<User>(cacheKey);
@@ -93,7 +93,7 @@ export class UserService {
   }
 
   async updateStatus(
-    id: number,
+    id: string,
     status: 'active' | 'inactive' | 'banned',
   ): Promise<User> {
     const user = await this.findById(id);
@@ -106,7 +106,7 @@ export class UserService {
     return updatedUser;
   }
 
-  async updateRole(id: number, role: 'user' | 'admin'): Promise<User> {
+  async updateRole(id: string, role: 'user' | 'admin'): Promise<User> {
     const user = await this.findById(id);
     user.role = role;
     const updatedUser = await this.userRepository.save(user);
@@ -132,7 +132,7 @@ export class UserService {
     };
   }
 
-  async batchRemove(ids: number[]): Promise<void> {
+  async batchRemove(ids: string[]): Promise<void> {
     const users = await this.userRepository.findByIds(ids);
 
     // 清除缓存
@@ -140,7 +140,7 @@ export class UserService {
 
     await this.userRepository.delete(ids);
   }
-  async update(id: number, updateUserDto: UpdateUserDto): Promise<User> {
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.findById(id);
 
     Object.assign(user, updateUserDto);
@@ -152,7 +152,7 @@ export class UserService {
     return updatedUser;
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: string): Promise<void> {
     const user = await this.findById(id);
 
     await this.userRepository.remove(user);

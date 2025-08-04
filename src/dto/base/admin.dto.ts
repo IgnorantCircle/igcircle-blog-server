@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
 
 /**
@@ -7,7 +7,7 @@ import { Expose, Transform } from 'class-transformer';
 export class AdminUserDto {
   @ApiProperty({ description: '用户ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '用户名' })
   @Expose()
@@ -57,7 +57,7 @@ export class AdminUserDto {
 export class AdminArticleDto {
   @ApiProperty({ description: '文章ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '标题' })
   @Expose()
@@ -170,7 +170,7 @@ export class AdminArticleDetailDto extends AdminArticleDto {
 export class AdminCategoryDto {
   @ApiProperty({ description: '分类ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '分类名称' })
   @Expose()
@@ -217,7 +217,7 @@ export class AdminCategoryDto {
 export class AdminTagDto {
   @ApiProperty({ description: '标签ID' })
   @Expose()
-  id: number;
+  id: string;
 
   @ApiProperty({ description: '标签名称' })
   @Expose()

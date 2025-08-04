@@ -7,7 +7,7 @@ import {
   Body,
   Param,
   Query,
-  ParseIntPipe,
+  ParseUUIDPipe,
   UseGuards,
   UseInterceptors,
   ClassSerializerInterceptor,
@@ -83,7 +83,7 @@ export class AdminUserController {
   @ApiOperation({ summary: '根据ID获取用户详情' })
   @ApiParam({ name: 'id', description: '用户ID' })
   @ApiResponse({ status: 200, description: '获取成功', type: AdminUserDto })
-  async findById(@Param('id', ParseIntPipe) id: number) {
+  async findById(@Param('id', ParseUUIDPipe) id: string) {
     const user = await this.userService.findById(id);
     return plainToClass(AdminUserDto, user, {
       excludeExtraneousValues: true,
@@ -95,7 +95,7 @@ export class AdminUserController {
   @ApiParam({ name: 'id', description: '用户ID' })
   @ApiResponse({ status: 200, description: '更新成功', type: AdminUserDto })
   async update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
   ) {
     const user = await this.userService.update(id, updateUserDto);
@@ -109,7 +109,7 @@ export class AdminUserController {
   @ApiParam({ name: 'id', description: '用户ID' })
   @ApiResponse({ status: 200, description: '更新成功', type: AdminUserDto })
   async updateStatus(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body('status') status: 'active' | 'inactive' | 'banned',
   ) {
     const user = await this.userService.updateStatus(id, status);
@@ -123,7 +123,7 @@ export class AdminUserController {
   @ApiParam({ name: 'id', description: '用户ID' })
   @ApiResponse({ status: 200, description: '更新成功', type: AdminUserDto })
   async updateRole(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body('role') role: 'user' | 'admin',
   ) {
     const user = await this.userService.updateRole(id, role);
@@ -136,7 +136,7 @@ export class AdminUserController {
   @ApiOperation({ summary: '删除用户' })
   @ApiParam({ name: 'id', description: '用户ID' })
   @ApiResponse({ status: 200, description: '删除成功' })
-  async remove(@Param('id', ParseIntPipe) id: number) {
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
     await this.userService.remove(id);
     return { message: '用户删除成功' };
   }
@@ -144,7 +144,7 @@ export class AdminUserController {
   @Delete('batch')
   @ApiOperation({ summary: '批量删除用户' })
   @ApiResponse({ status: 200, description: '批量删除成功' })
-  async batchRemove(@Body('ids') ids: number[]) {
+  async batchRemove(@Body('ids') ids: string[]) {
     await this.userService.batchRemove(ids);
     return { message: `成功删除 ${ids.length} 个用户` };
   }
