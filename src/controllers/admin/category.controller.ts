@@ -38,7 +38,7 @@ import {
 @Controller('admin/categories')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 export class AdminCategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 

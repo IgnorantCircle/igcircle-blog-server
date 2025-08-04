@@ -6,6 +6,7 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
 import { UserModule } from '@/modules/user.module';
+import { TagModule } from '@/modules/tag.module';
 import { CategoryModule } from '@/modules/category.module';
 import { ExampleModule } from '@/modules/example.module';
 import { AuthModule } from '@/modules/auth.module';
@@ -39,6 +40,7 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
     ExampleModule,
     UserModule,
     CategoryModule,
+    TagModule,
 
     // 认证模块
     AuthModule,
