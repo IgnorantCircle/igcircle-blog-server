@@ -3,10 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
-import { User } from '../entities/user.entity';
-import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
-import { PaginationSortDto } from '../common/dto/pagination.dto';
-import { ConflictException as BusinessConflictException } from '../common/exceptions/business.exception';
+import { User } from '@/entities/user.entity';
+import { CreateUserDto, UpdateUserDto } from '@/dto/user.dto';
+import { PaginationSortDto } from '@/common/dto/pagination.dto';
+import { ConflictException as BusinessConflictException } from '@/common/exceptions/business.exception';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -140,7 +140,6 @@ export class UserService {
 
     await this.userRepository.delete(ids);
   }
-
   async update(id: number, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.findById(id);
 

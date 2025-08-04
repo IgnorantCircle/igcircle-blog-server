@@ -7,7 +7,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaginationSortDto } from '../common/dto/pagination.dto';
+import { PaginationSortDto } from '@/common/dto/pagination.dto';
 
 export class CreateUserDto {
   @ApiProperty({ description: '用户名', minLength: 3, maxLength: 50 })

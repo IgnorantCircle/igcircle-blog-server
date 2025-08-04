@@ -1,10 +1,14 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { User } from '../entities/user.entity';
 import { Request } from 'express';
 // 扩展 Express 的 Request 接口以包含 user 属性
+interface JwtPayload {
+  sub: string;
+  username: string;
+  [key: string]: any;
+}
 declare module 'express' {
   interface Request {
-    user?: User;
+    user?: JwtPayload;
   }
 }
 

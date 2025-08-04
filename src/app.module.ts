@@ -3,15 +3,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { ExampleModule } from './modules/example.module';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { UserModule } from './modules/user.module';
-import { getDatabaseConfig } from './config/database.config';
-import { getRedisConfig } from './config/redis.config';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { ResponseInterceptor } from './common/interceptors/response.interceptor';
-import { AuthModule } from './modules/auth.module';
+import { AppController } from '@/app.controller';
+import { AppService } from '@/app.service';
+import { UserModule } from '@/modules/user.module';
+import { ExampleModule } from '@/modules/example.module';
+import { AuthModule } from '@/modules/auth.module';
+import { getDatabaseConfig } from '@/config/database.config';
+import { getRedisConfig } from '@/config/redis.config';
+import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
+import { ResponseInterceptor } from '@/common/interceptors/response.interceptor';
 
 @Module({
   imports: [
@@ -33,6 +33,8 @@ import { AuthModule } from './modules/auth.module';
       useFactory: getRedisConfig,
       isGlobal: true,
     }),
+
+    //业务模块
     ExampleModule,
     UserModule,
 

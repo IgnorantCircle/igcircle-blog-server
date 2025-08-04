@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { IS_PUBLIC_KEY } from '@/decorators/public.decorator';
 
 interface JwtPayload {
   sub: string;
@@ -15,9 +15,12 @@ interface JwtPayload {
   [key: string]: any;
 }
 
-interface RequestWithUser extends Request {
-  user?: JwtPayload;
+declare module 'express' {
+  interface Request {
+    user?: JwtPayload;
+  }
 }
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
@@ -35,7 +38,7 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
 
-    const request: RequestWithUser = context.switchToHttp().getRequest();
+    const request: Request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {

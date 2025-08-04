@@ -8,14 +8,14 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { ResponseUtil } from '../common/utils/response.util';
+import { ResponseUtil } from '@/common/utils/response.util';
 import {
   BusinessException,
   NotFoundException,
   ValidationException,
   ConflictException,
-} from '../common/exceptions/business.exception';
-import { PaginationDto } from '../common/dto/pagination.dto';
+} from '@/common/exceptions/business.exception';
+import { PaginationDto } from '@/common/dto/pagination.dto';
 // 定义创建数据的接口
 interface CreateExampleDto {
   [key: string]: any;
