@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, Like, In, IsNull } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Tag } from '@/entities/tag.entity';
@@ -31,7 +31,7 @@ export class TagService {
 
     // 检查名称是否已存在
     const existingByName = await this.tagRepository.findOne({
-      where: { name },
+      where: { name, deletedAt: IsNull() },
     });
     if (existingByName) {
       throw new ConflictException('标签名称已存在');
@@ -40,7 +40,7 @@ export class TagService {
     // 生成slug
     const finalSlug = slug || this.generateSlug(name);
     const existingBySlug = await this.tagRepository.findOne({
-      where: { slug: finalSlug },
+      where: { slug: finalSlug, deletedAt: IsNull() },
     });
     if (existingBySlug) {
       throw new ConflictException('标签slug已存在');
@@ -61,10 +61,9 @@ export class TagService {
     const {
       page = 1,
       limit = 10,
-      name,
+      keyword,
       isActive,
       minPopularity,
-      description,
       includeStats = false,
       sortBy = 'popularity',
       sortOrder = 'DESC',
@@ -72,21 +71,20 @@ export class TagService {
 
     const queryBuilder = this.tagRepository.createQueryBuilder('tag');
 
+    // 过滤已删除的标签
+    queryBuilder.where('tag.deletedAt IS NULL');
+
     if (includeStats) {
       queryBuilder.leftJoinAndSelect('tag.articles', 'articles');
     }
 
-    if (name) {
-      queryBuilder.andWhere('(tag.name LIKE :name)', {
-        name: `%${name}%`,
-      });
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(tag.name LIKE :keyword OR tag.description LIKE :keyword)',
+        { keyword: `%${keyword}%` },
+      );
     }
 
-    if (description) {
-      queryBuilder.andWhere('tag.description LIKE :description', {
-        description: `%${description}%`,
-      });
-    }
     if (typeof isActive === 'boolean') {
       queryBuilder.andWhere('tag.isActive = :isActive', { isActive });
     }
@@ -102,7 +100,7 @@ export class TagService {
     const finalSortBy = validSortFields.includes(sortBy)
       ? sortBy
       : 'popularity';
-    queryBuilder.orderBy(`tag.${finalSortBy}`, sortOrder);
+    queryBuilder.orderBy(`tag.${finalSortBy}`, sortOrder as 'ASC' | 'DESC');
 
     const [items, total] = await queryBuilder
       .skip((page - 1) * limit)
@@ -128,7 +126,7 @@ export class TagService {
     }
 
     const tag = await this.tagRepository.findOne({
-      where: { id },
+      where: { id, deletedAt: IsNull() },
       relations: ['articles'],
     });
 
@@ -148,7 +146,7 @@ export class TagService {
     }
 
     const tag = await this.tagRepository.findOne({
-      where: { slug },
+      where: { slug, deletedAt: IsNull() },
       relations: ['articles'],
     });
 
@@ -166,7 +164,7 @@ export class TagService {
     }
 
     return this.tagRepository.find({
-      where: { id: In(ids), isActive: true },
+      where: { id: In(ids), isActive: true, deletedAt: IsNull() },
     });
   }
 
@@ -176,7 +174,7 @@ export class TagService {
     }
 
     return this.tagRepository.find({
-      where: { name: In(names), isActive: true },
+      where: { name: In(names), isActive: true, deletedAt: IsNull() },
     });
   }
 
@@ -223,7 +221,12 @@ export class TagService {
       throw new ConflictException('存在关联文章，无法删除');
     }
 
-    await this.tagRepository.remove(tag);
+    // 逻辑删除
+    const now = Date.now();
+    await this.tagRepository.update(
+      { id },
+      { deletedAt: now, updatedAt: now }
+    );
     await this.clearTagCache();
   }
 
@@ -238,6 +241,7 @@ export class TagService {
     const tags = await this.tagRepository
       .createQueryBuilder('tag')
       .where('tag.isActive = :isActive', { isActive: true })
+      .andWhere('tag.deletedAt IS NULL')
       .orderBy('tag.popularity', 'DESC')
       .addOrderBy('tag.articleCount', 'DESC')
       .limit(limit)
@@ -258,6 +262,7 @@ export class TagService {
         'tag.color',
       ])
       .where('tag.isActive = :isActive', { isActive: true })
+      .andWhere('tag.deletedAt IS NULL')
       .orderBy('tag.articleCount', 'DESC')
       .limit(50)
       .getMany();
@@ -330,6 +335,7 @@ export class TagService {
       .createQueryBuilder('tag')
       .select(['tag.name', 'tag.articleCount'])
       .where('tag.isActive = :isActive', { isActive: true })
+      .andWhere('tag.deletedAt IS NULL')
       .andWhere('tag.articleCount > 0')
       .orderBy('tag.articleCount', 'DESC')
       .limit(100)

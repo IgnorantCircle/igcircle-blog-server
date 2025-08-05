@@ -2,13 +2,13 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToOne,
   ManyToMany,
   JoinColumn,
   JoinTable,
   Index,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
 import { Category } from './category.entity';
@@ -63,8 +63,8 @@ export class Article {
   @Column({ type: 'boolean', default: true })
   allowComment: boolean;
 
-  @Column({ type: 'timestamp', nullable: true })
-  publishedAt: Date | null;
+  @Column({ type: 'bigint', nullable: true })
+  publishedAt: number | null;
 
   // SEO 相关字段
   @Column({ type: 'text', nullable: true })
@@ -110,6 +110,9 @@ export class Article {
 
   @UpdateDateColumn({ type: 'timestamp' })
   updatedAt: Date;
+
+  @Column({ type: 'bigint', nullable: true })
+  deletedAt: number | null;
 
   @Column()
   authorId: string;

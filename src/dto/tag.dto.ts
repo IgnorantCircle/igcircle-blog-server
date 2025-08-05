@@ -74,20 +74,10 @@ export class UpdateTagDto {
 }
 
 export class TagQueryDto extends PaginationSortDto {
-  @ApiPropertyOptional({ description: '标签名称' })
+  @ApiPropertyOptional({ description: '标签名称关键词' })
   @IsOptional()
   @IsString()
-  name?: string;
-
-  @ApiPropertyOptional({ description: '标签描述' })
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @ApiPropertyOptional({ description: 'url别名' })
-  @IsOptional()
-  @IsString()
-  slug?: string;
+  keyword?: string;
 
   @ApiPropertyOptional({ description: '是否激活' })
   @IsOptional()

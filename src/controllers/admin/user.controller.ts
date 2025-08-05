@@ -72,7 +72,7 @@ export class AdminUserController {
     };
   }
 
-  @Get('statistics')
+  @Get('stats')
   @ApiOperation({ summary: '获取用户统计信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
   async getStatistics() {

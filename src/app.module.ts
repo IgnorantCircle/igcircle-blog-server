@@ -4,8 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { UserModule } from '@/modules/user.module';
-import { TagModule } from '@/modules/tag.module';
+import { ArticleModule } from '@/modules/article.module';
 import { CategoryModule } from '@/modules/category.module';
+import { TagModule } from '@/modules/tag.module';
 import { ExampleModule } from '@/modules/example.module';
 import { AuthModule } from '@/modules/auth.module';
 import { getDatabaseConfig } from '@/config/database.config';
@@ -20,30 +21,32 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
       isGlobal: true,
       envFilePath: '.env',
     }),
+
     // 数据库模块
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      inject: [ConfigService],
       useFactory: getDatabaseConfig,
+      inject: [ConfigService],
     }),
+
     // Redis缓存模块
     CacheModule.registerAsync({
       imports: [ConfigModule],
-      inject: [ConfigService],
       useFactory: getRedisConfig,
+      inject: [ConfigService],
       isGlobal: true,
     }),
 
-    //业务模块
-    ExampleModule,
+    // 业务模块
     UserModule,
+    ArticleModule,
     CategoryModule,
     TagModule,
+    ExampleModule,
 
     // 认证模块
     AuthModule,
   ],
-  controllers: [],
   providers: [
     // 全局异常过滤器
     {

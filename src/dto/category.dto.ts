@@ -46,7 +46,7 @@ export class CreateCategoryDto {
   @IsInt()
   @Min(0)
   @Type(() => Number)
-  levelShow?: number;
+  sortOrder?: number;
 
   @ApiPropertyOptional({ description: '父分类ID' })
   @IsOptional()
@@ -98,7 +98,7 @@ export class UpdateCategoryDto {
   @IsInt()
   @Min(0)
   @Type(() => Number)
-  levelShow?: number;
+  sortOrder?: number;
 
   @ApiPropertyOptional({ description: '父分类ID' })
   @IsOptional()
@@ -113,20 +113,10 @@ export class UpdateCategoryDto {
 }
 
 export class CategoryQueryDto extends PaginationSortDto {
-  @ApiPropertyOptional({ description: '分类名称' })
+  @ApiPropertyOptional({ description: '分类名称关键词' })
   @IsOptional()
   @IsString()
-  name?: string;
-
-  @ApiPropertyOptional({ description: 'url别名' })
-  @IsOptional()
-  @IsString()
-  slug?: string;
-
-  @ApiPropertyOptional({ description: '描述' })
-  @IsOptional()
-  @IsString()
-  description?: string;
+  keyword?: string;
 
   @ApiPropertyOptional({ description: '是否激活' })
   @IsOptional()
@@ -134,10 +124,11 @@ export class CategoryQueryDto extends PaginationSortDto {
   @Transform(({ value }) => value === 'true' || value === true)
   isActive?: boolean;
 
-  @ApiPropertyOptional({ description: '父分类名称' })
+  @ApiPropertyOptional({ description: '父分类ID' })
   @IsOptional()
-  @IsString()
-  parentName?: string;
+  @IsUUID()
+  parentId?: string;
+
   @ApiPropertyOptional({ description: '是否包含子分类', default: false })
   @IsOptional()
   @IsBoolean()

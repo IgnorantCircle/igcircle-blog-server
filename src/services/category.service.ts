@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Category } from '@/entities/category.entity';
@@ -30,7 +30,7 @@ export class CategoryService {
 
     // 检查名称是否已存在
     const existingByName = await this.categoryRepository.findOne({
-      where: { name },
+      where: { name, deletedAt: IsNull() },
     });
     if (existingByName) {
       throw new ConflictException('分类名称已存在');
@@ -39,7 +39,7 @@ export class CategoryService {
     // 生成slug
     const finalSlug = slug || this.generateSlug(name);
     const existingBySlug = await this.categoryRepository.findOne({
-      where: { slug: finalSlug },
+      where: { slug: finalSlug, deletedAt: IsNull() },
     });
     if (existingBySlug) {
       throw new ConflictException('分类slug已存在');
@@ -48,7 +48,7 @@ export class CategoryService {
     // 验证父分类
     if (parentId) {
       const parent = await this.categoryRepository.findOne({
-        where: { id: parentId },
+        where: { id: parentId, deletedAt: IsNull() },
       });
       if (!parent) {
         throw new NotFoundException('父分类不存在');
@@ -71,61 +71,45 @@ export class CategoryService {
     const {
       page = 1,
       limit = 10,
-      name,
-      slug,
+      keyword,
       isActive,
-      parentName,
+      parentId,
       includeChildren = false,
-      sortBy = 'levelShow',
+      sortBy = 'sortOrder',
       sortOrder = 'ASC',
-      description,
     } = query;
 
     const queryBuilder = this.categoryRepository
       .createQueryBuilder('category')
-      .leftJoinAndSelect('category.parent', 'parent');
+      .leftJoinAndSelect('category.parent', 'parent')
+      .where('category.deletedAt IS NULL');
 
     if (includeChildren) {
       queryBuilder.leftJoinAndSelect('category.children', 'children');
     }
 
-    if (name) {
-      queryBuilder.andWhere('(category.name LIKE :name)', {
-        name: `%${name}%`,
-      });
-    }
-
-    if (slug) {
-      queryBuilder.andWhere('(category.slug LIKE :slug)', {
-        slug: `%${slug}%`,
-      });
-    }
-
-    if (description) {
-      queryBuilder.andWhere('category.description LIKE :description', {
-        description: `%${description}%`,
-      });
+    if (keyword) {
+      queryBuilder.andWhere(
+        '(category.name LIKE :keyword OR category.description LIKE :keyword)',
+        { keyword: `%${keyword}%` },
+      );
     }
 
     if (typeof isActive === 'boolean') {
       queryBuilder.andWhere('category.isActive = :isActive', { isActive });
     }
 
-    // 处理parentName查询条件
-    if (parentName !== undefined) {
-      if (parentName === null) {
+    if (parentId !== undefined) {
+      if (parentId === null) {
         queryBuilder.andWhere('category.parentId IS NULL');
       } else {
-        // 直接通过联表查询实现parentName模糊匹配
-        queryBuilder.andWhere('parent.name LIKE :parentName', {
-          parentName: `%${parentName}%`,
-        });
+        queryBuilder.andWhere('category.parentId = :parentId', { parentId });
       }
     }
 
     // 排序
-    const validSortFields = ['levelShow', 'name', 'createdAt', 'articleCount'];
-    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'levelShow';
+    const validSortFields = ['sortOrder', 'name', 'createdAt', 'articleCount'];
+    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'sortOrder';
     queryBuilder.orderBy(`category.${finalSortBy}`, sortOrder);
 
     const [items, total] = await queryBuilder
@@ -152,7 +136,7 @@ export class CategoryService {
     }
 
     const category = await this.categoryRepository.findOne({
-      where: { id },
+      where: { id, deletedAt: IsNull() },
       relations: ['parent', 'children'],
     });
 
@@ -172,7 +156,7 @@ export class CategoryService {
     }
 
     const category = await this.categoryRepository.findOne({
-      where: { slug },
+      where: { slug, deletedAt: IsNull() },
       relations: ['parent', 'children'],
     });
 
@@ -194,7 +178,7 @@ export class CategoryService {
     // 检查名称冲突
     if (name && name !== category.name) {
       const existingByName = await this.categoryRepository.findOne({
-        where: { name },
+        where: { name, deletedAt: IsNull() },
       });
       if (existingByName && existingByName.id !== id) {
         throw new ConflictException('分类名称已存在');
@@ -204,7 +188,7 @@ export class CategoryService {
     // 检查slug冲突
     if (slug && slug !== category.slug) {
       const existingBySlug = await this.categoryRepository.findOne({
-        where: { slug },
+        where: { slug, deletedAt: IsNull() },
       });
       if (existingBySlug && existingBySlug.id !== id) {
         throw new ConflictException('分类slug已存在');
@@ -238,7 +222,7 @@ export class CategoryService {
 
     // 检查是否有子分类
     const childrenCount = await this.categoryRepository.count({
-      where: { parentId: id },
+      where: { parentId: id, deletedAt: IsNull() },
     });
     if (childrenCount > 0) {
       throw new ConflictException('存在子分类，无法删除');
@@ -249,7 +233,12 @@ export class CategoryService {
       throw new ConflictException('存在关联文章，无法删除');
     }
 
-    await this.categoryRepository.remove(category);
+    // 逻辑删除
+    const now = Date.now();
+    await this.categoryRepository.update(
+      { id },
+      { deletedAt: now, updatedAt: now }
+    );
     await this.clearCategoryCache();
   }
 
@@ -261,9 +250,9 @@ export class CategoryService {
     }
 
     const categories = await this.categoryRepository.find({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: IsNull() },
       relations: ['children'],
-      order: { levelShow: 'ASC', name: 'ASC' },
+      order: { sortOrder: 'ASC', name: 'ASC' },
     });
 
     const tree = this.buildTree(categories);
@@ -275,6 +264,8 @@ export class CategoryService {
     const categories = await this.categoryRepository
       .createQueryBuilder('category')
       .leftJoin('category.children', 'children')
+      .where('category.deletedAt IS NULL')
+      .andWhere('(children.deletedAt IS NULL OR children.id IS NULL)')
       .select([
         'category.id',
         'category.name',
@@ -285,7 +276,7 @@ export class CategoryService {
       .orderBy('category.articleCount', 'DESC')
       .getRawMany();
 
-    return categories.map((cat) => ({
+    return categories.map((cat: any) => ({
       id: cat.category_id,
       name: cat.category_name,
       articleCount: cat.category_articleCount,
@@ -298,7 +289,9 @@ export class CategoryService {
       .createQueryBuilder('category')
       .leftJoin('category.articles', 'article')
       .where('category.id = :categoryId', { categoryId })
+      .andWhere('category.deletedAt IS NULL')
       .andWhere('article.status = :status', { status: 'published' })
+      .andWhere('article.deletedAt IS NULL')
       .getCount();
 
     await this.categoryRepository.update(categoryId, { articleCount: count });
@@ -318,7 +311,7 @@ export class CategoryService {
     descendantId: string,
   ): Promise<boolean> {
     const descendant = await this.categoryRepository.findOne({
-      where: { id: descendantId },
+      where: { id: descendantId, deletedAt: IsNull() },
       relations: ['parent'],
     });
 

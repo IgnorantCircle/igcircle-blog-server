@@ -2,12 +2,12 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   OneToMany,
   ManyToOne,
   JoinColumn,
   Index,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Article } from './article.entity';
 
@@ -33,7 +33,7 @@ export class Category {
 
   @Column({ type: 'int', default: 0 })
   @Index()
-  levelShow: number; // 排序权重
+  sortOrder: number; // 排序权重
 
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
@@ -61,4 +61,7 @@ export class Category {
 
   @UpdateDateColumn({ type: 'timestamp' })
   updatedAt: Date;
+
+  @Column({ type: 'bigint', nullable: true })
+  deletedAt: number | null;
 }

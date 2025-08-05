@@ -1,5 +1,101 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Expose, Transform } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
+
+/**
+ * 管理端分类响应DTO - 包含完整数据
+ */
+export class AdminCategoryDto {
+  @ApiProperty({ description: '分类ID' })
+  @Expose()
+  id: string;
+
+  @ApiProperty({ description: '分类名称' })
+  @Expose()
+  name: string;
+
+  @ApiProperty({ description: '分类描述' })
+  @Expose()
+  description: string;
+
+  @ApiProperty({ description: '分类slug' })
+  @Expose()
+  slug: string;
+
+  @ApiProperty({ description: '分类封面图片' })
+  @Expose()
+  coverImage: string;
+
+  @ApiProperty({ description: '分类颜色' })
+  @Expose()
+  color: string;
+
+  @ApiProperty({ description: '排序权重' })
+  @Expose()
+  sortOrder: number;
+
+  @ApiProperty({ description: '是否激活' })
+  @Expose()
+  isActive: boolean;
+
+  @ApiProperty({ description: '文章数量' })
+  @Expose()
+  articleCount: number;
+
+  @ApiProperty({ description: '创建时间' })
+  @Expose()
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  createdAt: number;
+
+  @ApiProperty({ description: '更新时间' })
+  @Expose()
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  updatedAt: number;
+}
+
+/**
+ * 管理端标签响应DTO - 包含完整数据
+ */
+export class AdminTagDto {
+  @ApiProperty({ description: '标签ID' })
+  @Expose()
+  id: string;
+
+  @ApiProperty({ description: '标签名称' })
+  @Expose()
+  name: string;
+
+  @ApiProperty({ description: '标签slug' })
+  @Expose()
+  slug: string;
+
+  @ApiProperty({ description: '标签描述' })
+  @Expose()
+  description: string;
+
+  @ApiProperty({ description: '标签颜色' })
+  @Expose()
+  color: string;
+
+  @ApiProperty({ description: '是否激活' })
+  @Expose()
+  isActive: boolean;
+
+  @ApiProperty({ description: '文章数量' })
+  @Expose()
+  articleCount: number;
+
+  @ApiProperty({ description: '创建时间' })
+  @Expose()
+  createdAt: Date;
+
+  @ApiProperty({ description: '更新时间' })
+  @Expose()
+  updatedAt: Date;
+}
 
 /**
  * 管理端用户响应DTO - 包含完整数据
@@ -29,7 +125,10 @@ export class AdminUserDto {
   @Expose()
   bio: string;
 
-  @ApiProperty({ description: '用户状态', enum: ['active', 'inactive', 'banned'] })
+  @ApiProperty({
+    description: '用户状态',
+    enum: ['active', 'inactive', 'banned'],
+  })
   @Expose()
   status: string;
 
@@ -39,13 +138,17 @@ export class AdminUserDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  createdAt: Date;
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  createdAt: number;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  updatedAt: Date;
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  updatedAt: number;
 
   // 密码永远不返回
   password?: string;
@@ -75,13 +178,20 @@ export class AdminArticleDto {
   @Expose()
   coverImage: string;
 
-  @ApiProperty({ description: '文章状态', enum: ['draft', 'published', 'archived'] })
+  @ApiProperty({
+    description: '文章状态',
+    enum: ['draft', 'published', 'archived'],
+  })
   @Expose()
   status: string;
 
   @ApiProperty({ description: '作者ID' })
   @Expose()
   authorId: string;
+
+  @ApiProperty({ description: '分类ID' })
+  @Expose()
+  categoryId: string;
 
   @ApiProperty({ description: '阅读时间' })
   @Expose()
@@ -129,22 +239,43 @@ export class AdminArticleDto {
 
   @ApiProperty({ description: '发布时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  publishedAt: Date;
+  @Transform(({ value }) =>
+    value
+      ? typeof value === 'number'
+        ? new Date(value).toISOString()
+        : value
+      : null,
+  )
+  publishedAt: number | null;
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  createdAt: Date;
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  createdAt: number;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  updatedAt: Date;
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  updatedAt: number;
 
   @ApiProperty({ description: '作者信息', type: AdminUserDto })
   @Expose()
+  @Type(() => AdminUserDto)
   author: AdminUserDto;
+
+  @ApiProperty({ description: '分类信息', type: AdminCategoryDto })
+  @Expose()
+  @Type(() => AdminCategoryDto)
+  category: AdminCategoryDto;
+
+  @ApiProperty({ description: '标签列表', type: [AdminTagDto] })
+  @Expose()
+  @Type(() => AdminTagDto)
+  tags: AdminTagDto[];
 }
 
 /**
@@ -154,102 +285,4 @@ export class AdminArticleDetailDto extends AdminArticleDto {
   @ApiProperty({ description: '文章内容' })
   @Expose()
   content: string;
-
-  @ApiProperty({ description: '标签列表' })
-  @Expose()
-  tags: any[];
-
-  @ApiProperty({ description: '分类信息' })
-  @Expose()
-  category: any;
-}
-
-/**
- * 管理端分类响应DTO - 包含完整数据
- */
-export class AdminCategoryDto {
-  @ApiProperty({ description: '分类ID' })
-  @Expose()
-  id: string;
-
-  @ApiProperty({ description: '分类名称' })
-  @Expose()
-  name: string;
-
-  @ApiProperty({ description: '分类描述' })
-  @Expose()
-  description: string;
-
-  @ApiProperty({ description: '分类slug' })
-  @Expose()
-  slug: string;
-
-  @ApiProperty({ description: '分类图标' })
-  @Expose()
-  icon: string;
-
-  @ApiProperty({ description: '排序' })
-  @Expose()
-  sort: number;
-
-  @ApiProperty({ description: '是否可见' })
-  @Expose()
-  isVisible: boolean;
-
-  @ApiProperty({ description: '文章数量' })
-  @Expose()
-  articleCount: number;
-
-  @ApiProperty({ description: '创建时间' })
-  @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  createdAt: Date;
-
-  @ApiProperty({ description: '更新时间' })
-  @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  updatedAt: Date;
-}
-
-/**
- * 管理端标签响应DTO - 包含完整数据
- */
-export class AdminTagDto {
-  @ApiProperty({ description: '标签ID' })
-  @Expose()
-  id: string;
-
-  @ApiProperty({ description: '标签名称' })
-  @Expose()
-  name: string;
-
-  @ApiProperty({ description: '标签描述' })
-  @Expose()
-  description: string;
-
-  @ApiProperty({ description: '标签颜色' })
-  @Expose()
-  color: string;
-
-  @ApiProperty({ description: '排序' })
-  @Expose()
-  sort: number;
-
-  @ApiProperty({ description: '是否可见' })
-  @Expose()
-  isVisible: boolean;
-
-  @ApiProperty({ description: '文章数量' })
-  @Expose()
-  articleCount: number;
-
-  @ApiProperty({ description: '创建时间' })
-  @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  createdAt: Date;
-
-  @ApiProperty({ description: '更新时间' })
-  @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  updatedAt: Date;
 }

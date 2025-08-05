@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { User } from '@/entities/user.entity';
@@ -22,8 +22,8 @@ export class UserService {
     // 检查用户名和邮箱是否已存在
     const existingUser = await this.userRepository.findOne({
       where: [
-        { username: createUserDto.username },
-        { email: createUserDto.email },
+        { username: createUserDto.username, deletedAt: IsNull() },
+        { email: createUserDto.email, deletedAt: IsNull() },
       ],
     });
 
@@ -57,7 +57,9 @@ export class UserService {
     }
 
     // 缓存中没有，从数据库查找
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
 
     if (!user) {
       throw new NotFoundException('用户不存在');
@@ -77,7 +79,9 @@ export class UserService {
       return cachedUser;
     }
 
-    const user = await this.userRepository.findOne({ where: { username } });
+    const user = await this.userRepository.findOne({
+      where: { username, deletedAt: IsNull() },
+    });
 
     if (!user) {
       throw new NotFoundException('用户不存在');
@@ -89,7 +93,9 @@ export class UserService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return await this.userRepository.findOne({ where: { email } });
+    return await this.userRepository.findOne({
+      where: { email, deletedAt: IsNull() },
+    });
   }
 
   async updateStatus(
@@ -119,9 +125,13 @@ export class UserService {
 
   async getStatistics(): Promise<any> {
     const [total, activeUsers, adminUsers] = await Promise.all([
-      this.userRepository.count(),
-      this.userRepository.count({ where: { status: 'active' } }),
-      this.userRepository.count({ where: { role: 'admin' } }),
+      this.userRepository.count({ where: { deletedAt: IsNull() } }),
+      this.userRepository.count({
+        where: { status: 'active', deletedAt: IsNull() },
+      }),
+      this.userRepository.count({
+        where: { role: 'admin', deletedAt: IsNull() },
+      }),
     ]);
 
     return {
@@ -133,13 +143,47 @@ export class UserService {
   }
 
   async batchRemove(ids: string[]): Promise<void> {
-    const users = await this.userRepository.findByIds(ids);
+    const users = await this.userRepository.find({
+      where: { id: In(ids), deletedAt: IsNull() },
+    });
+
+    // 逻辑删除
+    const now = Date.now();
+    await this.userRepository.update(
+      { id: In(ids) },
+      { deletedAt: now, updatedAt: now }
+    );
 
     // 清除缓存
     await Promise.all(users.map((user) => this.clearUserCache(user)));
-
-    await this.userRepository.delete(ids);
   }
+
+  // 获取用户个人统计信息
+  async getUserStatistics(userId: string): Promise<any> {
+    const cacheKey = `user:stats:${userId}`;
+    const cachedStats = await this.cacheManager.get(cacheKey);
+    
+    if (cachedStats) {
+      return cachedStats;
+    }
+
+    // 这里需要根据实际的文章实体关系来查询
+    // 假设文章表中有 authorId 字段
+    const stats = {
+      totalArticles: 0, // 总文章数
+      publishedArticles: 0, // 已发布文章数
+      draftArticles: 0, // 草稿文章数
+      totalViews: 0, // 总浏览量
+      totalLikes: 0, // 总点赞数
+      totalShares: 0, // 总分享数
+    };
+
+    // 缓存统计信息（5分钟）
+    await this.cacheManager.set(cacheKey, stats, 300);
+
+    return stats;
+  }
+
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.findById(id);
 
@@ -155,7 +199,12 @@ export class UserService {
   async remove(id: string): Promise<void> {
     const user = await this.findById(id);
 
-    await this.userRepository.remove(user);
+    // 逻辑删除
+    const now = Date.now();
+    await this.userRepository.update(
+      { id },
+      { deletedAt: now, updatedAt: now }
+    );
 
     // 清除缓存
     await this.clearUserCache(user);
@@ -172,6 +221,7 @@ export class UserService {
     } = query;
 
     const [users, total] = await this.userRepository.findAndCount({
+      where: { deletedAt: IsNull() },
       skip: (page - 1) * limit,
       take: limit,
       order: { [sortBy]: sortOrder },

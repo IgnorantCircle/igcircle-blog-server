@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Exclude, Expose, Transform } from 'class-transformer';
 
 /**
- * 用户端个人资料DTO - 用户查看自己的完整信息
+ * 用户端个人资料DTO - 用户查看自己的信息
  */
 export class UserProfileDto {
   @ApiProperty({ description: '用户ID' })
@@ -29,134 +29,33 @@ export class UserProfileDto {
   @Expose()
   bio: string;
 
-  @ApiProperty({ description: '用户状态', enum: ['active', 'inactive', 'banned'] })
+  @ApiProperty({
+    description: '用户状态',
+    enum: ['active', 'inactive', 'banned'],
+  })
   @Expose()
   status: string;
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  createdAt: Date;
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  createdAt: number;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  updatedAt: Date;
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  updatedAt: number;
 
-  // 敏感信息不暴露
+  // 隐藏敏感信息
   @Exclude()
   password: string;
 
   @Exclude()
   role: string;
-}
-
-/**
- * 用户端文章DTO - 用户查看自己的文章信息
- */
-export class UserArticleDto {
-  @ApiProperty({ description: '文章ID' })
-  @Expose()
-  id: string;
-
-  @ApiProperty({ description: '标题' })
-  @Expose()
-  title: string;
-
-  @ApiProperty({ description: '摘要' })
-  @Expose()
-  summary: string;
-
-  @ApiProperty({ description: 'slug' })
-  @Expose()
-  slug: string;
-
-  @ApiProperty({ description: '封面图片' })
-  @Expose()
-  coverImage: string;
-
-  @ApiProperty({ description: '文章状态', enum: ['draft', 'published', 'archived'] })
-  @Expose()
-  status: string;
-
-  @ApiProperty({ description: '阅读时间' })
-  @Expose()
-  readingTime: number;
-
-  @ApiProperty({ description: '浏览次数' })
-  @Expose()
-  viewCount: number;
-
-  @ApiProperty({ description: '点赞数' })
-  @Expose()
-  likeCount: number;
-
-  @ApiProperty({ description: '分享数' })
-  @Expose()
-  shareCount: number;
-
-  @ApiProperty({ description: '是否精选' })
-  @Expose()
-  isFeatured: boolean;
-
-  @ApiProperty({ description: '是否置顶' })
-  @Expose()
-  isTop: boolean;
-
-  @ApiProperty({ description: 'SEO描述' })
-  @Expose()
-  metaDescription: string;
-
-  @ApiProperty({ description: 'SEO关键词' })
-  @Expose()
-  metaKeywords: string[];
-
-  @ApiProperty({ description: '社交分享图片' })
-  @Expose()
-  socialImage: string;
-
-  @ApiProperty({ description: '是否允许评论' })
-  @Expose()
-  allowComment: boolean;
-
-  @ApiProperty({ description: '发布时间' })
-  @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  publishedAt: Date;
-
-  @ApiProperty({ description: '创建时间' })
-  @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  createdAt: Date;
-
-  @ApiProperty({ description: '更新时间' })
-  @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  updatedAt: Date;
-
-  @ApiProperty({ description: '标签列表' })
-  @Expose()
-  tags: any[];
-
-  @ApiProperty({ description: '分类信息' })
-  @Expose()
-  category: any;
-
-  // 隐藏管理员专用字段
-  @Exclude()
-  authorId: string;
-
-  @Exclude()
-  weight: number;
-}
-
-/**
- * 用户端文章详情DTO - 包含文章内容
- */
-export class UserArticleDetailDto extends UserArticleDto {
-  @ApiProperty({ description: '文章内容' })
-  @Expose()
-  content: string;
 }
 
 /**
@@ -185,8 +84,10 @@ export class UserPublicDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) => value?.toISOString())
-  createdAt: Date;
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  createdAt: number;
 
   // 隐藏敏感信息
   @Exclude()
@@ -202,5 +103,5 @@ export class UserPublicDto {
   status: string;
 
   @Exclude()
-  updatedAt: Date;
+  updatedAt: number;
 }
