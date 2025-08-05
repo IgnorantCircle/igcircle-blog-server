@@ -3,8 +3,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { AppController } from '@/app.controller';
-import { AppService } from '@/app.service';
 import { UserModule } from '@/modules/user.module';
 import { TagModule } from '@/modules/tag.module';
 import { CategoryModule } from '@/modules/category.module';
@@ -45,9 +43,8 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
     // 认证模块
     AuthModule,
   ],
-  controllers: [AppController],
+  controllers: [],
   providers: [
-    AppService,
     // 全局异常过滤器
     {
       provide: APP_FILTER,
