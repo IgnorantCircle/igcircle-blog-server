@@ -7,8 +7,6 @@ import {
   JoinColumn,
   JoinTable,
   Index,
-  CreateDateColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
 import { Category } from './category.entity';
@@ -105,11 +103,11 @@ export class Article {
   @JoinColumn({ name: 'categoryId' })
   category: Category;
 
-  @CreateDateColumn({ type: 'timestamp' })
-  createdAt: Date;
+  @Column({ type: 'bigint' })
+  createdAt: number;
 
-  @UpdateDateColumn({ type: 'timestamp' })
-  updatedAt: Date;
+  @Column({ type: 'bigint' })
+  updatedAt: number;
 
   @Column({ type: 'bigint', nullable: true })
   deletedAt: number | null;

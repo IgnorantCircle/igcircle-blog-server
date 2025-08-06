@@ -1,15 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsDateString, IsBoolean, IsNumber } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { IsOptional, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class PublishArticleDto {
   @ApiPropertyOptional({
     description: '发布时间（时间戳）',
-    example: 1704067200000,
   })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({}, { message: '发布时间必须是时间戳格式' })
   publishedAt?: number;
 
   @ApiPropertyOptional({

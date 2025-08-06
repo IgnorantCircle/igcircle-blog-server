@@ -60,8 +60,12 @@ export class ExampleController {
   @Post('created')
   @ApiOperation({ summary: '创建响应示例' })
   @ApiResponse({ status: 201, description: '创建成功' })
-  postCreated(@Body() data: any) {
-    return { id: "1251648161", ...data, createdAt: new Date() };
+  postCreated(@Body() data: any): {
+    id: number;
+    createdAt: number;
+    [key: string]: any;
+  } {
+    return { id: 1251648161, ...data, createdAt: Date.now() };
   }
 
   @Get('not-found')

@@ -44,7 +44,7 @@ export class PublicUserDto {
   status: string;
 
   @Exclude()
-  updatedAt: Date;
+  updatedAt: number;
 }
 
 /**
@@ -215,8 +215,8 @@ export class PublicTagDto {
   isVisible: boolean;
 
   @Exclude()
-  createdAt: Date;
+  createdAt: number;
 
   @Exclude()
-  updatedAt: Date;
+  updatedAt: number;
 }

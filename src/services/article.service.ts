@@ -1,11 +1,10 @@
+import { Injectable, Inject } from '@nestjs/common';
 import {
-  Injectable,
   NotFoundException,
-  Inject,
   ConflictException,
-} from '@nestjs/common';
+} from '@/common/exceptions/business.exception';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, DataSource, In, IsNull } from 'typeorm';
+import { Repository, Not, DataSource, In, EntityManager } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Article } from '@/entities/article.entity';
@@ -15,6 +14,12 @@ import {
   UpdateArticleDto,
   ArticleQueryDto,
 } from '@/dto/article.dto';
+
+// 定义数据库错误接口
+interface DatabaseError {
+  code?: string;
+  errno?: number;
+}
 
 @Injectable()
 export class ArticleService {
@@ -46,10 +51,13 @@ export class ArticleService {
       }
 
       try {
+        const now = Date.now();
         const article = manager.create(Article, {
           ...articleData,
           slug: finalSlug,
           status,
+          createdAt: now,
+          updatedAt: now,
         });
 
         // 处理标签关联
@@ -66,11 +74,18 @@ export class ArticleService {
         await this.cacheArticle(savedArticle);
 
         return savedArticle;
-      } catch (error: any) {
+      } catch (error: unknown) {
         // 处理数据库唯一约束错误
+        const dbError = error as DatabaseError;
         if (
-          (error as any)?.code === 'ER_DUP_ENTRY' ||
-          (error as any)?.errno === 1062
+          (dbError &&
+            typeof dbError === 'object' &&
+            'code' in dbError &&
+            dbError.code === 'ER_DUP_ENTRY') ||
+          (dbError &&
+            typeof dbError === 'object' &&
+            'errno' in dbError &&
+            dbError.errno === 1062)
         ) {
           throw new ConflictException('文章slug已存在');
         }
@@ -87,12 +102,12 @@ export class ArticleService {
     }
 
     const article = await this.articleRepository.findOne({
-      where: { id, deletedAt: IsNull() },
+      where: { id },
       relations: ['author', 'category', 'tags'],
     });
 
     if (!article) {
-      throw new NotFoundException('文章不存在');
+      throw new NotFoundException('文章');
     }
 
     await this.cacheArticle(article);
@@ -109,12 +124,12 @@ export class ArticleService {
     }
 
     const article = await this.articleRepository.findOne({
-      where: { slug, deletedAt: IsNull() },
+      where: { slug },
       relations: ['author', 'category', 'tags'],
     });
 
     if (!article) {
-      throw new NotFoundException('文章不存在');
+      throw new NotFoundException('文章');
     }
 
     await this.cacheArticle(article);
@@ -125,7 +140,15 @@ export class ArticleService {
   async findAll(
     query: ArticleQueryDto,
   ): Promise<{ articles: Article[]; total: number }> {
-    const { page = 1, limit = 10, status, tagId, keyword, startDate, endDate } = query;
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      tagId,
+      keyword,
+      startDate,
+      endDate,
+    } = query;
 
     const queryBuilder = this.articleRepository
       .createQueryBuilder('article')
@@ -175,7 +198,7 @@ export class ArticleService {
         relations: ['tags'],
       });
       if (!article) {
-        throw new NotFoundException('文章不存在');
+        throw new NotFoundException('文章');
       }
 
       const { slug, tagIds, ...updateData } = updateArticleDto;
@@ -191,7 +214,9 @@ export class ArticleService {
       }
 
       try {
-        Object.assign(article, updateData, slug ? { slug } : {});
+        Object.assign(article, updateData, slug ? { slug } : {}, {
+          updatedAt: Date.now(),
+        });
 
         // 处理标签关联
         if (tagIds !== undefined) {
@@ -211,11 +236,18 @@ export class ArticleService {
         await this.cacheArticle(savedArticle);
 
         return savedArticle;
-      } catch (error: any) {
+      } catch (error: unknown) {
         // 处理数据库唯一约束错误
+        const dbError = error as DatabaseError;
         if (
-          (error as any)?.code === 'ER_DUP_ENTRY' ||
-          (error as any)?.errno === 1062
+          (dbError &&
+            typeof dbError === 'object' &&
+            'code' in dbError &&
+            dbError.code === 'ER_DUP_ENTRY') ||
+          (dbError &&
+            typeof dbError === 'object' &&
+            'errno' in dbError &&
+            dbError.errno === 1062)
         ) {
           throw new ConflictException('文章slug已存在');
         }
@@ -234,6 +266,7 @@ export class ArticleService {
     article.publishedAt = publishDto?.publishedAt
       ? publishDto.publishedAt
       : Date.now();
+    article.updatedAt = Date.now();
 
     const publishedArticle = await this.articleRepository.save(article);
 
@@ -264,7 +297,7 @@ export class ArticleService {
     const now = Date.now();
     await this.articleRepository.update(
       { id },
-      { deletedAt: now, updatedAt: now }
+      { deletedAt: now, updatedAt: now },
     );
 
     // 清除缓存
@@ -280,13 +313,13 @@ export class ArticleService {
     }
 
     const articles = await this.articleRepository.find({
-      where: { status: 'published', deletedAt: IsNull() },
+      where: { status: 'published' },
       order: { likeCount: 'DESC', viewCount: 'DESC' },
       take: limit,
       relations: ['author', 'category', 'tags'],
     });
 
-    await this.cacheManager.set(cacheKey, articles, 300000); // 5分钟缓存
+    await this.cacheManager.set(cacheKey, articles, 3600); // 1小时缓存
     return articles;
   }
 
@@ -300,29 +333,27 @@ export class ArticleService {
     }
 
     const articles = await this.articleRepository.find({
-      where: { status: 'published', deletedAt: IsNull() },
+      where: { status: 'published' },
       order: { publishedAt: 'DESC' },
       take: limit,
       relations: ['author', 'category', 'tags'],
     });
 
-    await this.cacheManager.set(cacheKey, articles, 300000); // 5分钟缓存
+    await this.cacheManager.set(cacheKey, articles, 3600); // 1小时缓存
     return articles;
   }
 
   // 获取文章统计信息
   async getStatistics(): Promise<any> {
-    const total = await this.articleRepository.count({
-      where: { deletedAt: IsNull() },
-    });
+    const total = await this.articleRepository.count();
     const published = await this.articleRepository.count({
-      where: { status: 'published', deletedAt: IsNull() },
+      where: { status: 'published' },
     });
     const draft = await this.articleRepository.count({
-      where: { status: 'draft', deletedAt: IsNull() },
+      where: { status: 'draft' },
     });
     const archived = await this.articleRepository.count({
-      where: { status: 'archived', deletedAt: IsNull() },
+      where: { status: 'archived' },
     });
 
     return {
@@ -391,7 +422,7 @@ export class ArticleService {
     const now = Date.now();
     await this.articleRepository.update(
       { id: In(ids) },
-      { deletedAt: now, updatedAt: now }
+      { deletedAt: now, updatedAt: now },
     );
 
     // 清除相关缓存
@@ -412,7 +443,6 @@ export class ArticleService {
       where: {
         status: 'published',
         isFeatured: true,
-        deletedAt: IsNull(),
       },
       order: { publishedAt: 'DESC' },
       take: limit,
@@ -471,11 +501,17 @@ export class ArticleService {
       .addOrderBy('month', 'DESC');
 
     if (year) {
-      queryBuilder.andWhere('YEAR(FROM_UNIXTIME(article.publishedAt / 1000)) = :year', { year });
+      queryBuilder.andWhere(
+        'YEAR(FROM_UNIXTIME(article.publishedAt / 1000)) = :year',
+        { year },
+      );
     }
 
     if (month) {
-      queryBuilder.andWhere('MONTH(FROM_UNIXTIME(article.publishedAt / 1000)) = :month', { month });
+      queryBuilder.andWhere(
+        'MONTH(FROM_UNIXTIME(article.publishedAt / 1000)) = :month',
+        { month },
+      );
     }
 
     const result = await queryBuilder.getRawMany();
@@ -491,7 +527,6 @@ export class ArticleService {
         authorId: article.authorId,
         status: 'published',
         id: Not(id),
-        deletedAt: IsNull(),
       },
       order: { publishedAt: 'DESC' },
       take: limit,
@@ -508,31 +543,15 @@ export class ArticleService {
     await this.clearArticleCache(id);
   }
 
-  async findFeatured(limit: number = 10): Promise<Article[]> {
-    return this.getFeatured(limit);
-  }
-
-  async findRecent(limit: number = 10): Promise<Article[]> {
-    return this.getRecent(limit);
-  }
-
-  async findPopular(limit: number = 10): Promise<Article[]> {
-    return this.getPopular(limit);
-  }
-
-  async incrementViewCount(id: string): Promise<void> {
-    await this.incrementViews(id);
-  }
-
   // 用户端API专用方法
   async findByIdAndAuthor(id: string, authorId: string): Promise<Article> {
     const article = await this.articleRepository.findOne({
-      where: { id, authorId, deletedAt: IsNull() },
+      where: { id, authorId },
       relations: ['author', 'tags', 'category'],
     });
 
     if (!article) {
-      throw new NotFoundException('文章不存在或无权限访问');
+      throw new NotFoundException('文章');
     }
 
     return article;
@@ -548,7 +567,7 @@ export class ArticleService {
         where: { id, authorId },
       });
       if (!article) {
-        throw new NotFoundException('文章不存在或无权限访问');
+        throw new NotFoundException('文章');
       }
 
       const { slug, ...updateData } = updateArticleDto;
@@ -571,11 +590,18 @@ export class ArticleService {
         await this.cacheArticle(savedArticle);
 
         return savedArticle;
-      } catch (error: any) {
+      } catch (error: unknown) {
         // 处理数据库唯一约束错误
+        const dbError = error as DatabaseError;
         if (
-          (error as any)?.code === 'ER_DUP_ENTRY' ||
-          (error as any)?.errno === 1062
+          (dbError &&
+            typeof dbError === 'object' &&
+            'code' in dbError &&
+            dbError.code === 'ER_DUP_ENTRY') ||
+          (dbError &&
+            typeof dbError === 'object' &&
+            'errno' in dbError &&
+            dbError.errno === 1062)
         ) {
           throw new ConflictException('文章slug已存在');
         }
@@ -610,7 +636,7 @@ export class ArticleService {
     const now = Date.now();
     await this.articleRepository.update(
       { id },
-      { deletedAt: now, updatedAt: now }
+      { deletedAt: now, updatedAt: now },
     );
     await this.clearArticleCache(id, article.slug);
   }
@@ -627,8 +653,8 @@ export class ArticleService {
   private async clearArticleCache(id: string, slug?: string): Promise<void> {
     const promises = [
       this.cacheManager.del(`article:${id}`),
-      this.cacheManager.del('popular:articles:10'),
-      this.cacheManager.del('recent:articles:10'),
+      this.cacheManager.del('articles:popular:10'),
+      this.cacheManager.del('articles:recent:10'),
     ];
 
     if (slug) {
@@ -640,7 +666,7 @@ export class ArticleService {
 
   private async generateUniqueSlug(
     title: string,
-    manager?: any,
+    manager?: EntityManager,
   ): Promise<string> {
     // 将标题转换为 slug 格式
     let baseSlug = title
@@ -667,11 +693,14 @@ export class ArticleService {
     return slug;
   }
 
-  private async isSlugExists(slug: string, manager?: any): Promise<boolean> {
+  private async isSlugExists(
+    slug: string,
+    manager?: EntityManager,
+  ): Promise<boolean> {
     const repository = manager
-      ? (manager as any).getRepository(Article)
+      ? manager.getRepository(Article)
       : this.articleRepository;
-    const article = await (repository as any).findOne({ where: { slug } });
+    const article = await repository.findOne({ where: { slug } });
     return !!article;
   }
 }

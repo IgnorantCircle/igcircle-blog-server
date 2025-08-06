@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like, In, IsNull } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Tag } from '@/entities/tag.entity';
@@ -31,7 +31,7 @@ export class TagService {
 
     // 检查名称是否已存在
     const existingByName = await this.tagRepository.findOne({
-      where: { name, deletedAt: IsNull() },
+      where: { name },
     });
     if (existingByName) {
       throw new ConflictException('标签名称已存在');
@@ -40,16 +40,19 @@ export class TagService {
     // 生成slug
     const finalSlug = slug || this.generateSlug(name);
     const existingBySlug = await this.tagRepository.findOne({
-      where: { slug: finalSlug, deletedAt: IsNull() },
+      where: { slug: finalSlug },
     });
     if (existingBySlug) {
       throw new ConflictException('标签slug已存在');
     }
 
+    const now = Date.now();
     const tag = this.tagRepository.create({
       ...tagData,
       name,
       slug: finalSlug,
+      createdAt: now,
+      updatedAt: now,
     });
 
     const savedTag = await this.tagRepository.save(tag);
@@ -126,12 +129,12 @@ export class TagService {
     }
 
     const tag = await this.tagRepository.findOne({
-      where: { id, deletedAt: IsNull() },
+      where: { id },
       relations: ['articles'],
     });
 
     if (!tag) {
-      throw new NotFoundException('标签不存在');
+      throw new NotFoundException('标签');
     }
 
     await this.cacheManager.set(cacheKey, tag, 300000); // 5分钟缓存
@@ -146,12 +149,12 @@ export class TagService {
     }
 
     const tag = await this.tagRepository.findOne({
-      where: { slug, deletedAt: IsNull() },
+      where: { slug },
       relations: ['articles'],
     });
 
     if (!tag) {
-      throw new NotFoundException('标签不存在');
+      throw new NotFoundException('标签');
     }
 
     await this.cacheManager.set(cacheKey, tag, 300000);
@@ -164,7 +167,7 @@ export class TagService {
     }
 
     return this.tagRepository.find({
-      where: { id: In(ids), isActive: true, deletedAt: IsNull() },
+      where: { id: In(ids), isActive: true },
     });
   }
 
@@ -174,7 +177,7 @@ export class TagService {
     }
 
     return this.tagRepository.find({
-      where: { name: In(names), isActive: true, deletedAt: IsNull() },
+      where: { name: In(names), isActive: true },
     });
   }
 
@@ -206,6 +209,7 @@ export class TagService {
       ...updateData,
       ...(name && { name }),
       ...(slug && { slug }),
+      updatedAt: Date.now(),
     });
 
     const updatedTag = await this.tagRepository.save(tag);
@@ -223,10 +227,7 @@ export class TagService {
 
     // 逻辑删除
     const now = Date.now();
-    await this.tagRepository.update(
-      { id },
-      { deletedAt: now, updatedAt: now }
-    );
+    await this.tagRepository.update({ id }, { deletedAt: now, updatedAt: now });
     await this.clearTagCache();
   }
 

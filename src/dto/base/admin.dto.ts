@@ -43,14 +43,14 @@ export class AdminCategoryDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
   createdAt: number;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
   updatedAt: number;
@@ -90,11 +90,17 @@ export class AdminTagDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  createdAt: Date;
+  @Transform(({ value }): string =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  createdAt: number;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  updatedAt: Date;
+  @Transform(({ value }): string =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
+  updatedAt: number;
 }
 
 /**
@@ -138,14 +144,14 @@ export class AdminUserDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
   createdAt: number;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
   updatedAt: number;
@@ -239,7 +245,7 @@ export class AdminArticleDto {
 
   @ApiProperty({ description: '发布时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }): string | null =>
     value
       ? typeof value === 'number'
         ? new Date(value).toISOString()
@@ -250,14 +256,14 @@ export class AdminArticleDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
   createdAt: number;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
   updatedAt: number;

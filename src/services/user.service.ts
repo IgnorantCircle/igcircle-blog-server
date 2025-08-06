@@ -1,12 +1,15 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { User } from '@/entities/user.entity';
 import { CreateUserDto, UpdateUserDto } from '@/dto/user.dto';
 import { PaginationSortDto } from '@/common/dto/pagination.dto';
-import { ConflictException as BusinessConflictException } from '@/common/exceptions/business.exception';
+import {
+  ConflictException as BusinessConflictException,
+  NotFoundException,
+} from '@/common/exceptions/business.exception';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -22,8 +25,8 @@ export class UserService {
     // 检查用户名和邮箱是否已存在
     const existingUser = await this.userRepository.findOne({
       where: [
-        { username: createUserDto.username, deletedAt: IsNull() },
-        { email: createUserDto.email, deletedAt: IsNull() },
+        { username: createUserDto.username },
+        { email: createUserDto.email },
       ],
     });
 
@@ -34,9 +37,12 @@ export class UserService {
     // 加密密码
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
+    const now = Date.now();
     const user = this.userRepository.create({
       ...createUserDto,
       password: hashedPassword,
+      createdAt: now,
+      updatedAt: now,
     });
 
     const savedUser = await this.userRepository.save(user);
@@ -58,16 +64,15 @@ export class UserService {
 
     // 缓存中没有，从数据库查找
     const user = await this.userRepository.findOne({
-      where: { id, deletedAt: IsNull() },
+      where: { id },
     });
 
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException('用户');
     }
 
     // 缓存用户信息
     await this.cacheUser(user);
-
     return user;
   }
 
@@ -80,11 +85,11 @@ export class UserService {
     }
 
     const user = await this.userRepository.findOne({
-      where: { username, deletedAt: IsNull() },
+      where: { username },
     });
 
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException('用户');
     }
 
     await this.cacheUser(user);
@@ -94,7 +99,7 @@ export class UserService {
 
   async findByEmail(email: string): Promise<User | null> {
     return await this.userRepository.findOne({
-      where: { email, deletedAt: IsNull() },
+      where: { email },
     });
   }
 
@@ -125,12 +130,12 @@ export class UserService {
 
   async getStatistics(): Promise<any> {
     const [total, activeUsers, adminUsers] = await Promise.all([
-      this.userRepository.count({ where: { deletedAt: IsNull() } }),
+      this.userRepository.count(),
       this.userRepository.count({
-        where: { status: 'active', deletedAt: IsNull() },
+        where: { status: 'active' },
       }),
       this.userRepository.count({
-        where: { role: 'admin', deletedAt: IsNull() },
+        where: { role: 'admin' },
       }),
     ]);
 
@@ -144,15 +149,11 @@ export class UserService {
 
   async batchRemove(ids: string[]): Promise<void> {
     const users = await this.userRepository.find({
-      where: { id: In(ids), deletedAt: IsNull() },
+      where: { id: In(ids) },
     });
 
-    // 逻辑删除
-    const now = Date.now();
-    await this.userRepository.update(
-      { id: In(ids) },
-      { deletedAt: now, updatedAt: now }
-    );
+    // 软删除
+    await this.userRepository.softDelete({ id: In(ids) });
 
     // 清除缓存
     await Promise.all(users.map((user) => this.clearUserCache(user)));
@@ -187,7 +188,9 @@ export class UserService {
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.findById(id);
 
-    Object.assign(user, updateUserDto);
+    Object.assign(user, updateUserDto, {
+      updatedAt: Date.now(),
+    });
     const updatedUser = await this.userRepository.save(user);
 
     // 更新缓存
@@ -203,7 +206,7 @@ export class UserService {
     const now = Date.now();
     await this.userRepository.update(
       { id },
-      { deletedAt: now, updatedAt: now }
+      { deletedAt: now, updatedAt: now },
     );
 
     // 清除缓存
@@ -221,7 +224,6 @@ export class UserService {
     } = query;
 
     const [users, total] = await this.userRepository.findAndCount({
-      where: { deletedAt: IsNull() },
       skip: (page - 1) * limit,
       take: limit,
       order: { [sortBy]: sortOrder },

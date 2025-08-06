@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Category } from '@/entities/category.entity';
@@ -30,7 +30,7 @@ export class CategoryService {
 
     // 检查名称是否已存在
     const existingByName = await this.categoryRepository.findOne({
-      where: { name, deletedAt: IsNull() },
+      where: { name },
     });
     if (existingByName) {
       throw new ConflictException('分类名称已存在');
@@ -39,7 +39,7 @@ export class CategoryService {
     // 生成slug
     const finalSlug = slug || this.generateSlug(name);
     const existingBySlug = await this.categoryRepository.findOne({
-      where: { slug: finalSlug, deletedAt: IsNull() },
+      where: { slug: finalSlug },
     });
     if (existingBySlug) {
       throw new ConflictException('分类slug已存在');
@@ -48,18 +48,21 @@ export class CategoryService {
     // 验证父分类
     if (parentId) {
       const parent = await this.categoryRepository.findOne({
-        where: { id: parentId, deletedAt: IsNull() },
+        where: { id: parentId },
       });
       if (!parent) {
-        throw new NotFoundException('父分类不存在');
+        throw new NotFoundException('分类');
       }
     }
 
+    const now = Date.now();
     const category = this.categoryRepository.create({
       ...categoryData,
       name,
       slug: finalSlug,
       parentId,
+      createdAt: now,
+      updatedAt: now,
     });
 
     const savedCategory = await this.categoryRepository.save(category);
@@ -136,12 +139,12 @@ export class CategoryService {
     }
 
     const category = await this.categoryRepository.findOne({
-      where: { id, deletedAt: IsNull() },
+      where: { id },
       relations: ['parent', 'children'],
     });
 
     if (!category) {
-      throw new NotFoundException('分类不存在');
+      throw new NotFoundException('分类');
     }
 
     await this.cacheManager.set(cacheKey, category, 300000); // 5分钟缓存
@@ -156,12 +159,12 @@ export class CategoryService {
     }
 
     const category = await this.categoryRepository.findOne({
-      where: { slug, deletedAt: IsNull() },
+      where: { slug },
       relations: ['parent', 'children'],
     });
 
     if (!category) {
-      throw new NotFoundException('分类不存在');
+      throw new NotFoundException('分类');
     }
 
     await this.cacheManager.set(cacheKey, category, 300000);
@@ -178,7 +181,7 @@ export class CategoryService {
     // 检查名称冲突
     if (name && name !== category.name) {
       const existingByName = await this.categoryRepository.findOne({
-        where: { name, deletedAt: IsNull() },
+        where: { name },
       });
       if (existingByName && existingByName.id !== id) {
         throw new ConflictException('分类名称已存在');
@@ -188,7 +191,7 @@ export class CategoryService {
     // 检查slug冲突
     if (slug && slug !== category.slug) {
       const existingBySlug = await this.categoryRepository.findOne({
-        where: { slug, deletedAt: IsNull() },
+        where: { slug },
       });
       if (existingBySlug && existingBySlug.id !== id) {
         throw new ConflictException('分类slug已存在');
@@ -210,6 +213,7 @@ export class CategoryService {
       ...(name && { name }),
       ...(slug && { slug }),
       ...(parentId !== undefined && { parentId }),
+      updatedAt: Date.now(),
     });
 
     const updatedCategory = await this.categoryRepository.save(category);
@@ -222,7 +226,7 @@ export class CategoryService {
 
     // 检查是否有子分类
     const childrenCount = await this.categoryRepository.count({
-      where: { parentId: id, deletedAt: IsNull() },
+      where: { parentId: id },
     });
     if (childrenCount > 0) {
       throw new ConflictException('存在子分类，无法删除');
@@ -234,11 +238,7 @@ export class CategoryService {
     }
 
     // 逻辑删除
-    const now = Date.now();
-    await this.categoryRepository.update(
-      { id },
-      { deletedAt: now, updatedAt: now }
-    );
+    await this.categoryRepository.softDelete(id);
     await this.clearCategoryCache();
   }
 
@@ -250,7 +250,7 @@ export class CategoryService {
     }
 
     const categories = await this.categoryRepository.find({
-      where: { isActive: true, deletedAt: IsNull() },
+      where: { isActive: true },
       relations: ['children'],
       order: { sortOrder: 'ASC', name: 'ASC' },
     });
@@ -311,7 +311,7 @@ export class CategoryService {
     descendantId: string,
   ): Promise<boolean> {
     const descendant = await this.categoryRepository.findOne({
-      where: { id: descendantId, deletedAt: IsNull() },
+      where: { id: descendantId },
       relations: ['parent'],
     });
 
