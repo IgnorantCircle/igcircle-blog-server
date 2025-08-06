@@ -302,6 +302,21 @@ export class AdminArticleController {
     });
   }
 
+  @Put(':id/visible')
+  @ApiOperation({ summary: '设置/取消文章可见性' })
+  @ApiParam({ name: 'id', description: '文章ID' })
+  @ApiResponse({
+    status: 200,
+    description: '操作成功',
+    type: AdminArticleDetailDto,
+  })
+  async toggleVisible(@Param('id', ParseUUIDPipe) id: string) {
+    const article = await this.articleService.toggleVisible(id);
+    return plainToClass(AdminArticleDetailDto, article, {
+      excludeExtraneousValues: true,
+    });
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: '删除文章' })
   @ApiParam({ name: 'id', description: '文章ID' })

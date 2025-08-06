@@ -84,6 +84,9 @@ export class Article {
   @Column({ type: 'boolean', default: false })
   isTop: boolean; // 是否置顶
 
+  @Column({ type: 'boolean', default: true })
+  isVisible: boolean; // 是否对用户端可见
+
   @Column({ type: 'int', default: 0 })
   @Index()
   weight: number; // 权重，用于排序

@@ -109,6 +109,12 @@ export class CreateArticleDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   allowComment?: boolean;
+
+  @ApiPropertyOptional({ description: '是否对用户端可见', default: true })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  isVisible?: boolean;
 }
 
 export class UpdateArticleDto {
@@ -216,6 +222,12 @@ export class UpdateArticleDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   allowComment?: boolean;
+
+  @ApiPropertyOptional({ description: '是否对用户端可见' })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  isVisible?: boolean;
 }
 
 export class ArticleQueryDto extends PaginationSortDto {
@@ -307,6 +319,15 @@ export class ArticleQueryDto extends PaginationSortDto {
   @Type(() => Boolean)
   @IsBoolean({ message: '是否包含分类信息必须是布尔值' })
   includeCategory?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否对用户端可见',
+    example: true,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean({ message: '是否对用户端可见必须是布尔值' })
+  isVisible?: boolean;
 }
 
 export class ArticleSearchDto {

@@ -27,7 +27,9 @@ export class PublicUserDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) => typeof value === 'number' ? new Date(value).toISOString() : value)
+  @Transform(({ value }) =>
+    typeof value === 'number' ? new Date(value).toISOString() : value,
+  )
   createdAt: number;
 
   // 敏感信息不暴露给公共API
@@ -97,7 +99,13 @@ export class PublicArticleDto {
 
   @ApiProperty({ description: '发布时间' })
   @Expose()
-  @Transform(({ value }) => value ? (typeof value === 'number' ? new Date(value).toISOString() : value) : null)
+  @Transform(({ value }) =>
+    value
+      ? typeof value === 'number'
+        ? new Date(value).toISOString()
+        : value
+      : null,
+  )
   publishedAt: number | null;
 
   @ApiProperty({ description: '作者信息', type: PublicUserDto })
@@ -120,6 +128,9 @@ export class PublicArticleDto {
   allowComment: boolean;
 
   @Exclude()
+  isVisible: boolean;
+
+  @Exclude()
   createdAt: number;
 
   @Exclude()
@@ -134,13 +145,34 @@ export class PublicArticleDetailDto extends PublicArticleDto {
   @Expose()
   content: string;
 
-  @ApiProperty({ description: '标签列表' })
+  @ApiProperty({ description: '标签列表', type: [PublicTagDto] })
   @Expose()
-  tags: any[];
+  @Transform(({ value }) => {
+    if (!value || !Array.isArray(value)) return [];
+    return value
+      .filter((tag: any) => tag.isActive)
+      .map((tag: any) => ({
+        id: tag.id,
+        name: tag.name,
+        color: tag.color,
+        articleCount: tag.articleCount,
+      }));
+  })
+  tags: PublicTagDto[];
 
-  @ApiProperty({ description: '分类信息' })
+  @ApiProperty({ description: '分类信息', type: PublicCategoryDto })
   @Expose()
-  category: any;
+  @Transform(({ value }) => {
+    if (!value || !value.isActive) return null;
+    return {
+      id: value.id,
+      name: value.name,
+      description: value.description,
+      icon: value.icon,
+      articleCount: value.articleCount,
+    };
+  })
+  category: PublicCategoryDto | null;
 }
 
 /**

@@ -148,6 +148,7 @@ export class ArticleService {
       keyword,
       startDate,
       endDate,
+      isVisible,
     } = query;
 
     const queryBuilder = this.articleRepository
@@ -179,6 +180,10 @@ export class ArticleService {
 
     if (endDate) {
       queryBuilder.andWhere('article.createdAt <= :endDate', { endDate });
+    }
+
+    if (isVisible !== undefined) {
+      queryBuilder.andWhere('article.isVisible = :isVisible', { isVisible });
     }
 
     const [articles, total] = await queryBuilder
@@ -313,7 +318,7 @@ export class ArticleService {
     }
 
     const articles = await this.articleRepository.find({
-      where: { status: 'published' },
+      where: { status: 'published', isVisible: true },
       order: { likeCount: 'DESC', viewCount: 'DESC' },
       take: limit,
       relations: ['author', 'category', 'tags'],
@@ -333,7 +338,7 @@ export class ArticleService {
     }
 
     const articles = await this.articleRepository.find({
-      where: { status: 'published' },
+      where: { status: 'published', isVisible: true },
       order: { publishedAt: 'DESC' },
       take: limit,
       relations: ['author', 'category', 'tags'],
@@ -417,6 +422,20 @@ export class ArticleService {
     return updatedArticle;
   }
 
+  async toggleVisible(id: string): Promise<Article> {
+    const article = await this.findById(id);
+
+    article.isVisible = !article.isVisible;
+    article.updatedAt = Date.now();
+
+    const updatedArticle = await this.articleRepository.save(article);
+
+    // 更新缓存
+    await this.clearArticleCache(id, article.slug);
+
+    return updatedArticle;
+  }
+
   async batchRemove(ids: string[]): Promise<void> {
     // 逻辑删除
     const now = Date.now();
@@ -443,6 +462,7 @@ export class ArticleService {
       where: {
         status: 'published',
         isFeatured: true,
+        isVisible: true,
       },
       order: { publishedAt: 'DESC' },
       take: limit,
@@ -463,6 +483,7 @@ export class ArticleService {
     const queryBuilder = this.articleRepository
       .createQueryBuilder('article')
       .where('article.status = :status', { status: 'published' })
+      .andWhere('article.isVisible = :isVisible', { isVisible: true })
       .andWhere('article.deletedAt IS NULL')
       .andWhere(
         '(article.title LIKE :keyword OR article.content LIKE :keyword)',
@@ -526,6 +547,7 @@ export class ArticleService {
       where: {
         authorId: article.authorId,
         status: 'published',
+        isVisible: true,
         id: Not(id),
       },
       order: { publishedAt: 'DESC' },

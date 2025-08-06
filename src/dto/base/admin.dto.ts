@@ -243,6 +243,10 @@ export class AdminArticleDto {
   @Expose()
   allowComment: boolean;
 
+  @ApiProperty({ description: '是否对用户端可见' })
+  @Expose()
+  isVisible: boolean;
+
   @ApiProperty({ description: '发布时间' })
   @Expose()
   @Transform(({ value }): string | null =>
