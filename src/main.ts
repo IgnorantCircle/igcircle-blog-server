@@ -35,7 +35,6 @@ async function bootstrap() {
     .setTitle('igCircle Blog API')
     .setDescription('igCircle博客系统API文档')
     .setVersion('1.0')
-    .addTag('users', '用户管理')
     .addBearerAuth(
       {
         type: 'http',

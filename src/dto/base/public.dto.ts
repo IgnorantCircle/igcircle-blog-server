@@ -2,6 +2,84 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Exclude, Expose, Transform } from 'class-transformer';
 
 /**
+ * 公共分类响应DTO
+ */
+export class PublicCategoryDto {
+  @ApiProperty({ description: '分类ID' })
+  @Expose()
+  id: string;
+
+  @ApiProperty({ description: '分类名称' })
+  @Expose()
+  name: string;
+
+  @ApiProperty({ description: '分类描述' })
+  @Expose()
+  description: string;
+
+  @ApiProperty({ description: '分类图标' })
+  @Expose()
+  icon: string;
+
+  @ApiProperty({ description: '文章数量' })
+  @Expose()
+  articleCount: number;
+
+  // 管理信息不暴露
+  @Exclude()
+  slug: string;
+
+  @Exclude()
+  sort: number;
+
+  @Exclude()
+  isVisible: boolean;
+
+  @Exclude()
+  createdAt: number;
+
+  @Exclude()
+  updatedAt: number;
+}
+
+/**
+ * 公共标签响应DTO
+ */
+export class PublicTagDto {
+  @ApiProperty({ description: '标签ID' })
+  @Expose()
+  id: string;
+
+  @ApiProperty({ description: '标签名称' })
+  @Expose()
+  name: string;
+
+  @ApiProperty({ description: '标签颜色' })
+  @Expose()
+  color: string;
+
+  @ApiProperty({ description: '文章数量' })
+  @Expose()
+  articleCount: number;
+
+  // 管理信息不暴露
+  @Exclude()
+  description: string;
+
+  @Exclude()
+  sort: number;
+
+  @Exclude()
+  isVisible: boolean;
+
+  @Exclude()
+  createdAt: number;
+
+  @Exclude()
+  updatedAt: number;
+}
+
+/**
  * 公共API响应基类 - 用户端API返回的脱敏数据
  */
 export class PublicUserDto {
@@ -136,7 +214,6 @@ export class PublicArticleDto {
   @Exclude()
   updatedAt: number;
 }
-
 /**
  * 公共文章详情响应DTO - 包含内容
  */
@@ -173,82 +250,4 @@ export class PublicArticleDetailDto extends PublicArticleDto {
     };
   })
   category: PublicCategoryDto | null;
-}
-
-/**
- * 公共分类响应DTO
- */
-export class PublicCategoryDto {
-  @ApiProperty({ description: '分类ID' })
-  @Expose()
-  id: string;
-
-  @ApiProperty({ description: '分类名称' })
-  @Expose()
-  name: string;
-
-  @ApiProperty({ description: '分类描述' })
-  @Expose()
-  description: string;
-
-  @ApiProperty({ description: '分类图标' })
-  @Expose()
-  icon: string;
-
-  @ApiProperty({ description: '文章数量' })
-  @Expose()
-  articleCount: number;
-
-  // 管理信息不暴露
-  @Exclude()
-  slug: string;
-
-  @Exclude()
-  sort: number;
-
-  @Exclude()
-  isVisible: boolean;
-
-  @Exclude()
-  createdAt: number;
-
-  @Exclude()
-  updatedAt: number;
-}
-
-/**
- * 公共标签响应DTO
- */
-export class PublicTagDto {
-  @ApiProperty({ description: '标签ID' })
-  @Expose()
-  id: string;
-
-  @ApiProperty({ description: '标签名称' })
-  @Expose()
-  name: string;
-
-  @ApiProperty({ description: '标签颜色' })
-  @Expose()
-  color: string;
-
-  @ApiProperty({ description: '文章数量' })
-  @Expose()
-  articleCount: number;
-
-  // 管理信息不暴露
-  @Exclude()
-  description: string;
-
-  @Exclude()
-  sort: number;
-
-  @Exclude()
-  isVisible: boolean;
-
-  @Exclude()
-  createdAt: number;
-
-  @Exclude()
-  updatedAt: number;
 }

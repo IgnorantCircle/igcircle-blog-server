@@ -9,6 +9,7 @@ import { CategoryModule } from '@/modules/category.module';
 import { TagModule } from '@/modules/tag.module';
 import { ExampleModule } from '@/modules/example.module';
 import { AuthModule } from '@/modules/auth.module';
+import { AdminModule } from '@/modules/admin.module';
 import { getDatabaseConfig } from '@/config/database.config';
 import { getRedisConfig } from '@/config/redis.config';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
@@ -46,6 +47,9 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
 
     // 认证模块
     AuthModule,
+
+    // API模块
+    AdminModule,
   ],
   providers: [
     // 全局异常过滤器
