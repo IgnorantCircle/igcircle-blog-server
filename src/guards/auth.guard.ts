@@ -6,9 +6,8 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
-import { IS_PUBLIC_KEY } from '@/decorators/public.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 interface JwtPayload {
   sub: string;
@@ -16,15 +15,14 @@ interface JwtPayload {
   [key: string]: any;
 }
 
-// 使用交叉类型而不是扩展 Request 接口
-type RequestWithUser = Request & { user?: JwtPayload };
-
+interface RequestWithUser extends Request {
+  user?: JwtPayload;
+}
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
     private reflector: Reflector,
-    private configService: ConfigService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -46,7 +44,7 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload: JwtPayload = await this.jwtService.verifyAsync(token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
+        secret: process.env.JWT_SECRET,
       });
 
       // 将用户信息附加到请求对象

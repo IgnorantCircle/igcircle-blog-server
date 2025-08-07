@@ -5,33 +5,43 @@ import {
   HttpCode,
   HttpStatus,
   UnauthorizedException,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
-import { UserService } from '@/services/user.service';
-import { EmailService } from '@/services/email.service';
-import { Public } from '@/decorators/public.decorator';
+import { UserService } from '../services/user.service';
+import { Public } from '../decorators/public.decorator';
 import * as bcrypt from 'bcrypt';
-import { User } from '@/entities/user.entity';
-import {
-  LoginDto,
-  LoginResponseDto,
-  RegisterDto,
-  RegisterResponseDto,
-  SendVerificationCodeDto,
-  VerificationCodeResponseDto,
-} from '@/dto/auth.dto';
-import { CreateUserDto } from '@/dto/user.dto';
+import { IsString, IsNotEmpty } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { User } from '../entities/user.entity';
+
+export class LoginDto {
+  @ApiProperty({ description: '用户名或邮箱' })
+  @IsString()
+  @IsNotEmpty()
+  username: string;
+
+  @ApiProperty({ description: '密码' })
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+
+export class LoginResponseDto {
+  @ApiProperty({ description: '访问令牌' })
+  access_token: string;
+
+  @ApiProperty({ description: '用户信息' })
+  user: Pick<User, 'id' | 'username' | 'email' | 'nickname' | 'role'>;
+}
 
 @ApiTags('认证')
-@Controller('/auth')
+@Controller('auth')
 @Public()
 export class AuthController {
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
-    private readonly emailService: EmailService,
   ) {}
 
   @Post('login')
@@ -79,7 +89,7 @@ export class AuthController {
 
     const access_token = await this.jwtService.signAsync(payload);
 
-    const result: LoginResponseDto = {
+    return {
       access_token,
       user: {
         id: user.id,
@@ -89,8 +99,6 @@ export class AuthController {
         role: user.role,
       },
     };
-
-    return result;
   }
 
   @Post('admin/login')
@@ -107,75 +115,5 @@ export class AuthController {
     }
 
     return result;
-  }
-
-  @Post('send-verification-code')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '发送注册验证码' })
-  @ApiResponse({
-    status: 200,
-    description: '验证码发送成功',
-    type: VerificationCodeResponseDto,
-  })
-  @ApiResponse({ status: 400, description: '请求参数错误或发送频率过高' })
-  async sendVerificationCode(
-    @Body() sendCodeDto: SendVerificationCodeDto,
-  ): Promise<VerificationCodeResponseDto> {
-    // 检查邮箱是否已被注册
-    const existingUser = await this.userService.findByEmail(sendCodeDto.email);
-    if (existingUser) {
-      throw new BadRequestException('该邮箱已被注册');
-    }
-
-    await this.emailService.sendVerificationCode(sendCodeDto.email);
-
-    return {
-      message: '验证码已发送到您的邮箱，请查收',
-    };
-  }
-
-  @Post('register')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: '用户注册' })
-  @ApiResponse({
-    status: 201,
-    description: '注册成功',
-    type: RegisterResponseDto,
-  })
-  @ApiResponse({ status: 400, description: '注册信息无效或验证码错误' })
-  @ApiResponse({ status: 409, description: '用户名或邮箱已存在' })
-  async register(
-    @Body() registerDto: RegisterDto,
-  ): Promise<RegisterResponseDto> {
-    // 验证验证码
-    const isCodeValid = await this.emailService.verifyCode(
-      registerDto.email,
-      registerDto.verificationCode,
-    );
-
-    if (!isCodeValid) {
-      throw new BadRequestException('验证码无效或已过期');
-    }
-
-    // 创建用户DTO
-    const createUserDto: CreateUserDto = {
-      username: registerDto.username,
-      email: registerDto.email,
-      password: registerDto.password,
-    };
-
-    // 创建用户
-    const user = await this.userService.create(createUserDto);
-
-    return {
-      message: '注册成功',
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        nickname: user.nickname,
-        role: user.role,
-      },
-    };
   }
 }

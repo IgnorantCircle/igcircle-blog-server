@@ -1,7 +1,7 @@
 import {
   ApiResponse,
   PaginatedResponse,
-} from '@/common/interfaces/response.interface';
+} from '../interfaces/response.interface';
 
 /**
  * 响应工具类

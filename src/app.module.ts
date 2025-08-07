@@ -1,8 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { UserModule } from '@/modules/user.module';
 import { ArticleModule } from '@/modules/article.module';
 import { CategoryModule } from '@/modules/category.module';
@@ -14,13 +14,18 @@ import { getDatabaseConfig } from '@/config/database.config';
 import { getRedisConfig } from '@/config/redis.config';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import { ResponseInterceptor } from '@/common/interceptors/response.interceptor';
+import { configFactory } from '@/common/config/config.validation';
+import { JwtAuthGuard } from '@/guards/auth.guard';
+import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
 
 @Module({
   imports: [
-    // 配置模块
+    // 配置模块（带验证）
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [configFactory],
+      validate: configFactory,
     }),
 
     // 数据库模块
@@ -48,10 +53,14 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
     // 认证模块
     AuthModule,
 
-    // API模块
     AdminModule,
   ],
   providers: [
+    // 全局认证守卫
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
     // 全局异常过滤器
     {
       provide: APP_FILTER,
@@ -64,4 +73,8 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RateLimitMiddleware).forRoutes('*'); // 对所有路由应用限流中间件
+  }
+}

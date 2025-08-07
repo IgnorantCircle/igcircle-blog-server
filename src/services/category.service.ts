@@ -15,6 +15,7 @@ import {
   CategoryStatsDto,
 } from '@/dto/category.dto';
 import { PaginatedResponse } from '@/common/interfaces/response.interface';
+import { ErrorCode } from '@/common/constants/error-codes';
 
 @Injectable()
 export class CategoryService {
@@ -33,7 +34,7 @@ export class CategoryService {
       where: { name },
     });
     if (existingByName) {
-      throw new ConflictException('分类名称已存在');
+      throw new ConflictException(ErrorCode.CATEGORY_NAME_EXISTS);
     }
 
     // 生成slug
@@ -42,7 +43,7 @@ export class CategoryService {
       where: { slug: finalSlug },
     });
     if (existingBySlug) {
-      throw new ConflictException('分类slug已存在');
+      throw new ConflictException(ErrorCode.CATEGORY_NAME_EXISTS, '分类slug已存在');
     }
 
     // 验证父分类
@@ -51,7 +52,7 @@ export class CategoryService {
         where: { id: parentId },
       });
       if (!parent) {
-        throw new NotFoundException('分类');
+        throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
       }
     }
 
@@ -144,7 +145,7 @@ export class CategoryService {
     });
 
     if (!category) {
-      throw new NotFoundException('分类');
+      throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
     await this.cacheManager.set(cacheKey, category, 300000); // 5分钟缓存
@@ -164,7 +165,7 @@ export class CategoryService {
     });
 
     if (!category) {
-      throw new NotFoundException('分类');
+      throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
     await this.cacheManager.set(cacheKey, category, 300000);
@@ -184,7 +185,7 @@ export class CategoryService {
         where: { name },
       });
       if (existingByName && existingByName.id !== id) {
-        throw new ConflictException('分类名称已存在');
+        throw new ConflictException(ErrorCode.CATEGORY_NAME_EXISTS);
       }
     }
 
@@ -194,17 +195,17 @@ export class CategoryService {
         where: { slug },
       });
       if (existingBySlug && existingBySlug.id !== id) {
-        throw new ConflictException('分类slug已存在');
+        throw new ConflictException(ErrorCode.CATEGORY_NAME_EXISTS, '分类slug已存在');
       }
     }
 
     // 验证父分类（防止循环引用）
     if (parentId !== undefined && parentId !== category.parentId) {
       if (parentId === id) {
-        throw new ConflictException('不能将自己设为父分类');
+        throw new ConflictException(ErrorCode.CATEGORY_INVALID_PARENT, '不能将自己设为父分类');
       }
       if (parentId && (await this.isDescendant(id, parentId))) {
-        throw new ConflictException('不能将子分类设为父分类');
+        throw new ConflictException(ErrorCode.CATEGORY_INVALID_PARENT, '不能将子分类设为父分类');
       }
     }
 
@@ -229,12 +230,12 @@ export class CategoryService {
       where: { parentId: id },
     });
     if (childrenCount > 0) {
-      throw new ConflictException('存在子分类，无法删除');
+      throw new ConflictException(ErrorCode.CATEGORY_HAS_ARTICLES, '存在子分类，无法删除');
     }
 
     // 检查是否有关联文章
     if (category.articleCount > 0) {
-      throw new ConflictException('存在关联文章，无法删除');
+      throw new ConflictException(ErrorCode.CATEGORY_HAS_ARTICLES, '存在关联文章，无法删除');
     }
 
     // 逻辑删除
@@ -277,9 +278,9 @@ export class CategoryService {
       .getRawMany();
 
     return categories.map((cat: any) => ({
-      id: cat.category_id,
-      name: cat.category_name,
-      articleCount: cat.category_articleCount,
+      id: cat.category_id as string,
+      name: cat.category_name as string,
+      articleCount: cat.category_articleCount as number,
       childrenCount: parseInt(cat.childrenCount) || 0,
     }));
   }
@@ -296,6 +297,33 @@ export class CategoryService {
 
     await this.categoryRepository.update(categoryId, { articleCount: count });
     await this.clearCategoryCache();
+  }
+
+  async findOrCreate(name: string): Promise<Category> {
+    // 先尝试查找现有分类
+    const existingCategory = await this.categoryRepository.findOne({
+      where: { name },
+    });
+
+    if (existingCategory) {
+      return existingCategory;
+    }
+
+    // 如果不存在，创建新分类
+    const slug = this.generateSlug(name);
+    const category = this.categoryRepository.create({
+      name,
+      slug,
+      description: '',
+      isActive: true,
+      articleCount: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const savedCategory = await this.categoryRepository.save(category);
+    await this.clearCategoryCache();
+    return savedCategory;
   }
 
   private generateSlug(name: string): string {

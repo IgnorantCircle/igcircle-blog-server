@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { ErrorResponse } from '@/common/interfaces/response.interface';
+import { ErrorResponse } from '../interfaces/response.interface';
 
 /**
  * 全局HTTP异常过滤器

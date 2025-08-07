@@ -16,6 +16,7 @@ import {
   PopularTagsDto,
 } from '@/dto/tag.dto';
 import { PaginatedResponse } from '@/common/interfaces/response.interface';
+import { ErrorCode } from '@/common/constants/error-codes';
 
 @Injectable()
 export class TagService {
@@ -34,7 +35,7 @@ export class TagService {
       where: { name },
     });
     if (existingByName) {
-      throw new ConflictException('标签名称已存在');
+      throw new ConflictException(ErrorCode.TAG_NAME_EXISTS);
     }
 
     // 生成slug
@@ -43,7 +44,7 @@ export class TagService {
       where: { slug: finalSlug },
     });
     if (existingBySlug) {
-      throw new ConflictException('标签slug已存在');
+      throw new ConflictException(ErrorCode.TAG_NAME_EXISTS, '标签slug已存在');
     }
 
     const now = Date.now();
@@ -134,7 +135,7 @@ export class TagService {
     });
 
     if (!tag) {
-      throw new NotFoundException('标签');
+      throw new NotFoundException(ErrorCode.TAG_NOT_FOUND);
     }
 
     await this.cacheManager.set(cacheKey, tag, 300000); // 5分钟缓存
@@ -154,7 +155,7 @@ export class TagService {
     });
 
     if (!tag) {
-      throw new NotFoundException('标签');
+      throw new NotFoundException(ErrorCode.TAG_NOT_FOUND);
     }
 
     await this.cacheManager.set(cacheKey, tag, 300000);
@@ -191,7 +192,7 @@ export class TagService {
         where: { name },
       });
       if (existingByName && existingByName.id !== id) {
-        throw new ConflictException('标签名称已存在');
+        throw new ConflictException(ErrorCode.TAG_NAME_EXISTS);
       }
     }
 
@@ -201,7 +202,10 @@ export class TagService {
         where: { slug },
       });
       if (existingBySlug && existingBySlug.id !== id) {
-        throw new ConflictException('标签slug已存在');
+        throw new ConflictException(
+          ErrorCode.TAG_NAME_EXISTS,
+          '标签slug已存在',
+        );
       }
     }
 
@@ -222,7 +226,10 @@ export class TagService {
 
     // 检查是否有关联文章
     if (tag.articleCount > 0) {
-      throw new ConflictException('存在关联文章，无法删除');
+      throw new ConflictException(
+        ErrorCode.TAG_IN_USE,
+        '存在关联文章，无法删除',
+      );
     }
 
     // 逻辑删除

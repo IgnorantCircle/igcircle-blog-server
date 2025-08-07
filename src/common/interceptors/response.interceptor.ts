@@ -7,8 +7,8 @@ import {
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Request, Response } from 'express';
-import { ApiResponse } from '@/common/interfaces/response.interface';
-import { ResponseUtil } from '@/common/utils/response.util';
+import { ApiResponse } from '../interfaces/response.interface';
+import { ResponseUtil } from '../utils/response.util';
 
 /**
  * 响应拦截器 - 统一格式化成功响应

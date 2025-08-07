@@ -2,16 +2,16 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from '@/app.module';
+import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   // 启用CORS
   const corsOrigins: (string | RegExp)[] =
-    (configService.get<string>('CORS_ORIGIN') || '')
-      .split(',')
-      .map((origin: string) => origin.trim())
-      .filter((origin: string) => origin !== '') || [];
+    configService
+      .get<string>('CORS_ORIGIN')
+      ?.split(',')
+      .map((origin: string) => origin.trim()) || [];
 
   app.enableCors({
     origin: corsOrigins,
@@ -35,6 +35,7 @@ async function bootstrap() {
     .setTitle('igCircle Blog API')
     .setDescription('igCircle博客系统API文档')
     .setVersion('1.0')
+    .addTag('users', '用户管理')
     .addBearerAuth(
       {
         type: 'http',

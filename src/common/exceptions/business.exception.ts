@@ -1,21 +1,25 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
+import { ErrorCode, getErrorMessage } from '@/common/constants/error-codes';
 
 /**
  * 业务异常类
  */
 export class BusinessException extends HttpException {
   constructor(
-    message: string,
-    code: number = HttpStatus.BAD_REQUEST,
-    error?: string,
+    errorCode: ErrorCode,
+    message?: string,
+    httpStatus: number = HttpStatus.BAD_REQUEST,
+    details?: unknown,
   ) {
+    const errorMessage = message || getErrorMessage(errorCode);
     super(
       {
-        message,
-        error: error || 'Business Error',
-        statusCode: code,
+        code: errorCode,
+        message: errorMessage,
+        details,
+        timestamp: new Date().toISOString(),
       },
-      code,
+      httpStatus,
     );
   }
 }
@@ -24,8 +28,11 @@ export class BusinessException extends HttpException {
  * 资源未找到异常
  */
 export class NotFoundException extends BusinessException {
-  constructor(resource: string = '资源') {
-    super(`${resource}不存在`, HttpStatus.NOT_FOUND, 'Not Found');
+  constructor(
+    errorCode: ErrorCode = ErrorCode.COMMON_NOT_FOUND,
+    message?: string,
+  ) {
+    super(errorCode, message, HttpStatus.NOT_FOUND);
   }
 }
 
@@ -33,8 +40,11 @@ export class NotFoundException extends BusinessException {
  * 权限不足异常
  */
 export class ForbiddenException extends BusinessException {
-  constructor(message: string = '权限不足') {
-    super(message, HttpStatus.FORBIDDEN, 'Forbidden');
+  constructor(
+    errorCode: ErrorCode = ErrorCode.COMMON_FORBIDDEN,
+    message?: string,
+  ) {
+    super(errorCode, message, HttpStatus.FORBIDDEN);
   }
 }
 
@@ -42,8 +52,11 @@ export class ForbiddenException extends BusinessException {
  * 未授权异常
  */
 export class UnauthorizedException extends BusinessException {
-  constructor(message: string = '未授权访问') {
-    super(message, HttpStatus.UNAUTHORIZED, 'Unauthorized');
+  constructor(
+    errorCode: ErrorCode = ErrorCode.COMMON_UNAUTHORIZED,
+    message?: string,
+  ) {
+    super(errorCode, message, HttpStatus.UNAUTHORIZED);
   }
 }
 
@@ -51,19 +64,37 @@ export class UnauthorizedException extends BusinessException {
  * 参数验证异常
  */
 export class ValidationException extends BusinessException {
-  constructor(message: string = '参数验证失败', details?: any[]) {
-    super(message, HttpStatus.BAD_REQUEST, 'Validation Error');
-    if (details) {
-      this.getResponse()['details'] = details;
-    }
+  constructor(message?: string, details?: unknown[]) {
+    super(
+      ErrorCode.COMMON_VALIDATION_FAILED,
+      message,
+      HttpStatus.BAD_REQUEST,
+      details,
+    );
   }
 }
 
 /**
- * 冲突异常
+ * 资源冲突异常
  */
 export class ConflictException extends BusinessException {
-  constructor(message: string = '资源冲突') {
-    super(message, HttpStatus.CONFLICT, 'Conflict');
+  constructor(
+    errorCode: ErrorCode = ErrorCode.COMMON_CONFLICT,
+    message?: string,
+  ) {
+    super(errorCode, message, HttpStatus.CONFLICT);
+  }
+}
+
+/**
+ * 限流异常
+ */
+export class RateLimitException extends BusinessException {
+  constructor(message?: string) {
+    super(
+      ErrorCode.COMMON_RATE_LIMIT_EXCEEDED,
+      message,
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 }

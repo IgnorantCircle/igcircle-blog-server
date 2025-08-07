@@ -3,8 +3,9 @@ import {
   NotFoundException,
   ConflictException,
 } from '@/common/exceptions/business.exception';
+import { ErrorCode } from '@/common/constants/error-codes';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, DataSource, In, EntityManager } from 'typeorm';
+import { Repository, Not, DataSource, In } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { Article } from '@/entities/article.entity';
@@ -39,26 +40,34 @@ export class ArticleService {
       // 生成或验证 slug
       let finalSlug = slug;
       if (!finalSlug) {
-        finalSlug = await this.generateUniqueSlug(articleData.title, manager);
-      } else {
-        // 在事务中检查slug是否已存在
-        const existingArticle = await manager.findOne(Article, {
-          where: { slug: finalSlug },
-        });
-        if (existingArticle) {
-          throw new ConflictException('文章slug已存在');
-        }
+        // 生成基础slug，不添加后缀
+        finalSlug = this.generateSlug(articleData.title);
+      }
+
+      // 检查slug是否已存在，如果存在则拒绝创建
+      const existingArticle = await manager.findOne(Article, {
+        where: { slug: finalSlug },
+      });
+      if (existingArticle) {
+        throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
       }
 
       try {
-        const now = Date.now();
-        const article = manager.create(Article, {
+        const articleCreateData: any = {
           ...articleData,
           slug: finalSlug,
           status,
-          createdAt: now,
-          updatedAt: now,
-        });
+        };
+
+        // 只在有值时才设置时间戳字段，否则让数据库使用默认值
+        if (articleData.createdAt !== undefined) {
+          articleCreateData.createdAt = articleData.createdAt;
+        }
+        if (articleData.updatedAt !== undefined) {
+          articleCreateData.updatedAt = articleData.updatedAt;
+        }
+
+        const article = manager.create(Article, articleCreateData);
 
         // 处理标签关联
         if (tagIds && tagIds.length > 0) {
@@ -87,7 +96,7 @@ export class ArticleService {
             'errno' in dbError &&
             dbError.errno === 1062)
         ) {
-          throw new ConflictException('文章slug已存在');
+          throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
         }
         throw error;
       }
@@ -107,7 +116,7 @@ export class ArticleService {
     });
 
     if (!article) {
-      throw new NotFoundException('文章');
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
     await this.cacheArticle(article);
@@ -129,7 +138,7 @@ export class ArticleService {
     });
 
     if (!article) {
-      throw new NotFoundException('文章');
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
     await this.cacheArticle(article);
@@ -203,7 +212,7 @@ export class ArticleService {
         relations: ['tags'],
       });
       if (!article) {
-        throw new NotFoundException('文章');
+        throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
       }
 
       const { slug, tagIds, ...updateData } = updateArticleDto;
@@ -214,7 +223,7 @@ export class ArticleService {
           where: { slug, id: Not(id) },
         });
         if (existingArticle) {
-          throw new ConflictException('文章slug已存在');
+          throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
         }
       }
 
@@ -254,7 +263,7 @@ export class ArticleService {
             'errno' in dbError &&
             dbError.errno === 1062)
         ) {
-          throw new ConflictException('文章slug已存在');
+          throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
         }
         throw error;
       }
@@ -573,7 +582,7 @@ export class ArticleService {
     });
 
     if (!article) {
-      throw new NotFoundException('文章');
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
     return article;
@@ -589,7 +598,7 @@ export class ArticleService {
         where: { id, authorId },
       });
       if (!article) {
-        throw new NotFoundException('文章');
+        throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
       }
 
       const { slug, ...updateData } = updateArticleDto;
@@ -600,7 +609,7 @@ export class ArticleService {
           where: { slug, id: Not(id) },
         });
         if (existingArticle) {
-          throw new ConflictException('文章slug已存在');
+          throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
         }
       }
 
@@ -625,7 +634,7 @@ export class ArticleService {
             'errno' in dbError &&
             dbError.errno === 1062)
         ) {
-          throw new ConflictException('文章slug已存在');
+          throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
         }
         throw error;
       }
@@ -686,12 +695,9 @@ export class ArticleService {
     await Promise.all(promises);
   }
 
-  private async generateUniqueSlug(
-    title: string,
-    manager?: EntityManager,
-  ): Promise<string> {
+  private generateSlug(title: string): string {
     // 将标题转换为 slug 格式
-    let baseSlug = title
+    let slug = title
       .toLowerCase()
       .replace(/[^a-z0-9\u4e00-\u9fff\s-]/g, '') // 保留中文、英文、数字、空格和连字符
       .replace(/\s+/g, '-') // 将空格替换为连字符
@@ -699,30 +705,10 @@ export class ArticleService {
       .replace(/^-|-$/g, ''); // 移除开头和结尾的连字符
 
     // 如果 slug 为空，使用时间戳
-    if (!baseSlug) {
-      baseSlug = `article-${Date.now()}`;
-    }
-
-    let slug = baseSlug;
-    let counter = 1;
-
-    // 检查 slug 是否已存在，如果存在则添加数字后缀
-    while (await this.isSlugExists(slug, manager)) {
-      slug = `${baseSlug}-${counter}`;
-      counter++;
+    if (!slug) {
+      slug = `article-${Date.now()}`;
     }
 
     return slug;
-  }
-
-  private async isSlugExists(
-    slug: string,
-    manager?: EntityManager,
-  ): Promise<boolean> {
-    const repository = manager
-      ? manager.getRepository(Article)
-      : this.articleRepository;
-    const article = await repository.findOne({ where: { slug } });
-    return !!article;
   }
 }

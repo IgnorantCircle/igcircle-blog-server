@@ -9,16 +9,19 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ResponseUtil } from '@/common/utils/response.util';
+import { Public } from '@/decorators/public.decorator';
 import {
   BusinessException,
   NotFoundException,
   ValidationException,
   ConflictException,
 } from '@/common/exceptions/business.exception';
-import { PaginationDto } from '@/common/dto/pagination.dto';
+import { ErrorCode } from '@/common/constants/error-codes';
+import { PaginationSortDto } from '@/common/dto/pagination.dto';
 
 @ApiTags('示例接口')
 @Controller('examples')
+@Public()
 export class ExampleController {
   @Get('success')
   @ApiOperation({ summary: '成功响应示例' })
@@ -40,7 +43,7 @@ export class ExampleController {
   @Get('paginated')
   @ApiOperation({ summary: '分页响应示例' })
   @ApiResponse({ status: 200, description: '查询成功' })
-  getPaginated(@Query() query: PaginationDto) {
+  getPaginated(@Query() query: PaginationSortDto) {
     const limit = query.limit || 10;
     const page = query.page || 1;
     const mockData = Array.from({ length: limit }, (_, i) => ({
@@ -65,21 +68,28 @@ export class ExampleController {
     createdAt: number;
     [key: string]: any;
   } {
-    return { id: 1251648161, ...data, createdAt: Date.now() };
+    return { id: Date.now(), createdAt: Date.now(), ...data } as {
+      id: number;
+      createdAt: number;
+      [key: string]: any;
+    };
   }
 
   @Get('not-found')
   @ApiOperation({ summary: '404错误示例' })
   @ApiResponse({ status: 404, description: '资源不存在' })
   getNotFound() {
-    throw new NotFoundException('示例资源');
+    throw new NotFoundException(ErrorCode.COMMON_NOT_FOUND, '示例资源');
   }
 
   @Get('business-error')
   @ApiOperation({ summary: '业务错误示例' })
   @ApiResponse({ status: 400, description: '业务错误' })
   getBusinessError() {
-    throw new BusinessException('这是一个业务逻辑错误示例');
+    throw new BusinessException(
+      ErrorCode.COMMON_NOT_FOUND,
+      '这是一个业务逻辑错误示例',
+    );
   }
 
   @Get('validation-error')
@@ -96,7 +106,7 @@ export class ExampleController {
   @ApiOperation({ summary: '冲突错误示例' })
   @ApiResponse({ status: 409, description: '资源冲突' })
   getConflictError() {
-    throw new ConflictException('用户名已存在');
+    throw new ConflictException(ErrorCode.USER_NOT_FOUND, '用户名已存在');
   }
 
   @Get('server-error')
@@ -112,7 +122,7 @@ export class ExampleController {
   @ApiResponse({ status: 404, description: '用户不存在' })
   getUser(@Param('id', ParseUUIDPipe) id: string) {
     if (id === '00000000-0000-0000-0000-000000000999') {
-      throw new NotFoundException('用户');
+      throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
     }
     return { id, name: `用户${id}`, email: `user${id}@example.com` };
   }
