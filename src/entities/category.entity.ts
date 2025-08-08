@@ -6,6 +6,9 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { Article } from './article.entity';
 
@@ -54,12 +57,12 @@ export class Category {
   @Column({ type: 'int', default: 0 })
   articleCount: number; // 文章数量统计
 
-  @Column({ type: 'bigint' })
-  createdAt: number;
+  @CreateDateColumn({ type: 'timestamp' })
+  createdAt: Date;
 
-  @Column({ type: 'bigint' })
-  updatedAt: number;
+  @UpdateDateColumn({ type: 'timestamp' })
+  updatedAt: Date;
 
-  @Column({ type: 'bigint', nullable: true })
-  deletedAt: number | null;
+  @DeleteDateColumn({ type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
 }

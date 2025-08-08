@@ -4,6 +4,9 @@ import {
   Column,
   ManyToMany,
   Index,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { Article } from './article.entity';
 
@@ -37,12 +40,12 @@ export class Tag {
   @Index()
   popularity: number; // 标签热度
 
-  @Column({ type: 'bigint' })
-  createdAt: number;
+  @CreateDateColumn({ type: 'timestamp' })
+  createdAt: Date;
 
-  @Column({ type: 'bigint' })
-  updatedAt: number;
+  @UpdateDateColumn({ type: 'timestamp' })
+  updatedAt: Date;
 
-  @Column({ type: 'bigint', nullable: true })
-  deletedAt: number | null;
+  @DeleteDateColumn({ type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
 }

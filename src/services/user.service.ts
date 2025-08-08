@@ -18,7 +18,6 @@ import {
 } from '@/common/decorators/query-optimization.decorator';
 import { ErrorCode } from '@/common/constants/error-codes';
 import { BusinessException } from '@/common/exceptions/business.exception';
-
 @Injectable()
 export class UserService extends BaseService<User> {
   constructor(

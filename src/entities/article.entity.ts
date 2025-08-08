@@ -4,13 +4,18 @@ import {
   Column,
   ManyToOne,
   ManyToMany,
+  OneToMany,
   JoinColumn,
   JoinTable,
   Index,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
 import { Category } from './category.entity';
 import { Tag } from './tag.entity';
+import { Comment } from './comment.entity';
 
 @Entity('articles')
 export class Article {
@@ -61,8 +66,8 @@ export class Article {
   @Column({ type: 'boolean', default: true })
   allowComment: boolean;
 
-  @Column({ type: 'bigint', nullable: true })
-  publishedAt: number | null;
+  @Column({ type: 'timestamp', nullable: true })
+  publishedAt: Date | null;
 
   // SEO 相关字段
   @Column({ type: 'text', nullable: true })
@@ -106,14 +111,14 @@ export class Article {
   @JoinColumn({ name: 'categoryId' })
   category: Category;
 
-  @Column({ type: 'bigint' })
-  createdAt: number;
+  @CreateDateColumn({ type: 'timestamp' })
+  createdAt: Date;
 
-  @Column({ type: 'bigint' })
-  updatedAt: number;
+  @UpdateDateColumn({ type: 'timestamp' })
+  updatedAt: Date;
 
-  @Column({ type: 'bigint', nullable: true })
-  deletedAt: number | null;
+  @DeleteDateColumn({ type: 'timestamp', nullable: true })
+  deletedAt: Date | null;
 
   @Column()
   authorId: string;
@@ -121,4 +126,8 @@ export class Article {
   @ManyToOne(() => User, { eager: true })
   @JoinColumn({ name: 'authorId' })
   author: User;
+
+  // 评论关联
+  @OneToMany(() => Comment, (comment) => comment.article)
+  comments: Comment[];
 }

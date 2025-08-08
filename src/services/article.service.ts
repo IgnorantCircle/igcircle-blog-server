@@ -59,7 +59,7 @@ export class ArticleService {
           status,
         };
 
-        // 只在有值时才设置时间戳字段，否则让数据库使用默认值
+        // 只在有值时才设置时间戳字段，否则让 TypeORM 自动管理
         if (articleData.createdAt !== undefined) {
           articleCreateData.createdAt = articleData.createdAt;
         }
@@ -228,9 +228,8 @@ export class ArticleService {
       }
 
       try {
-        Object.assign(article, updateData, slug ? { slug } : {}, {
-          updatedAt: Date.now(),
-        });
+        Object.assign(article, updateData, slug ? { slug } : {});
+        // TypeORM 的 @UpdateDateColumn 装饰器会自动管理 updatedAt
 
         // 处理标签关联
         if (tagIds !== undefined) {
@@ -272,15 +271,14 @@ export class ArticleService {
 
   async publish(
     id: string,
-    publishDto?: { publishedAt?: number },
+    publishDto?: { publishedAt?: Date },
   ): Promise<Article> {
     const article = await this.findById(id);
 
     article.status = 'published';
     article.publishedAt = publishDto?.publishedAt
       ? publishDto.publishedAt
-      : Date.now();
-    article.updatedAt = Date.now();
+      : new Date();
 
     const publishedArticle = await this.articleRepository.save(article);
 
@@ -307,12 +305,9 @@ export class ArticleService {
   async remove(id: string): Promise<void> {
     const article = await this.findById(id);
 
-    // 逻辑删除
-    const now = Date.now();
-    await this.articleRepository.update(
-      { id },
-      { deletedAt: now, updatedAt: now },
-    );
+    // 使用 TypeORM 的软删除
+    await this.articleRepository.softDelete({ id });
+    // TypeORM 的 @DeleteDateColumn 和 @UpdateDateColumn 装饰器会自动管理时间戳
 
     // 清除缓存
     await this.clearArticleCache(id, article.slug);
@@ -435,7 +430,7 @@ export class ArticleService {
     const article = await this.findById(id);
 
     article.isVisible = !article.isVisible;
-    article.updatedAt = Date.now();
+    // TypeORM 的 @UpdateDateColumn 装饰器会自动管理 updatedAt
 
     const updatedArticle = await this.articleRepository.save(article);
 
@@ -446,12 +441,9 @@ export class ArticleService {
   }
 
   async batchRemove(ids: string[]): Promise<void> {
-    // 逻辑删除
-    const now = Date.now();
-    await this.articleRepository.update(
-      { id: In(ids) },
-      { deletedAt: now, updatedAt: now },
-    );
+    // 使用 TypeORM 的软删除
+    await this.articleRepository.softDelete({ id: In(ids) });
+    // TypeORM 的 @DeleteDateColumn 和 @UpdateDateColumn 装饰器会自动管理时间戳
 
     // 清除相关缓存
     for (const id of ids) {
@@ -644,14 +636,14 @@ export class ArticleService {
   async publishByAuthor(
     id: string,
     authorId: string,
-    publishDto?: { publishedAt?: number },
+    publishDto?: { publishedAt?: Date },
   ): Promise<Article> {
     const article = await this.findByIdAndAuthor(id, authorId);
 
     article.status = 'published';
     article.publishedAt = publishDto?.publishedAt
       ? publishDto.publishedAt
-      : Date.now();
+      : new Date();
 
     const publishedArticle = await this.articleRepository.save(article);
 
@@ -663,12 +655,9 @@ export class ArticleService {
   async removeByAuthor(id: string, authorId: string): Promise<void> {
     const article = await this.findByIdAndAuthor(id, authorId);
 
-    // 逻辑删除
-    const now = Date.now();
-    await this.articleRepository.update(
-      { id },
-      { deletedAt: now, updatedAt: now },
-    );
+    // 使用 TypeORM 的软删除
+    await this.articleRepository.softDelete({ id });
+    // TypeORM 的 @DeleteDateColumn 和 @UpdateDateColumn 装饰器会自动管理时间戳
     await this.clearArticleCache(id, article.slug);
   }
 
