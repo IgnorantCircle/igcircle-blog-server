@@ -18,6 +18,7 @@ import { configFactory } from '@/common/config/config.validation';
 import { JwtAuthGuard } from '@/guards/auth.guard';
 import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
 import { CommonModule } from '@/common/common.module';
+import { ArticleImportModule } from '@/modules/article-import.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { CommonModule } from '@/common/common.module';
     CategoryModule,
     TagModule,
     ExampleModule,
+    ArticleImportModule,
 
     // 认证模块
     AuthModule,
