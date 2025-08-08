@@ -76,10 +76,7 @@ export class CacheStrategyService {
   /**
    * 获取缓存
    */
-  async get<T>(
-    key: string,
-    options: CacheOptions,
-  ): Promise<T | null> {
+  async get<T>(key: string, options: CacheOptions): Promise<T | null> {
     const config = this.getCacheConfig(options.type);
     const fullKey = this.buildKey(config.prefix, key);
 
@@ -95,11 +92,7 @@ export class CacheStrategyService {
   /**
    * 设置缓存
    */
-  async set<T>(
-    key: string,
-    value: T,
-    options: CacheOptions,
-  ): Promise<void> {
+  async set<T>(key: string, value: T, options: CacheOptions): Promise<void> {
     const config = this.getCacheConfig(options.type);
     const fullKey = this.buildKey(config.prefix, key);
     const ttl = options.ttl || config.ttl;
@@ -122,22 +115,6 @@ export class CacheStrategyService {
       await this.cacheManager.del(fullKey);
     } catch (error) {
       console.error(`Failed to delete from cache: ${error}`);
-    }
-  }
-
-  /**
-   * 清除指定标签的缓存
-   */
-  async clearByTags(tags: string[]): Promise<void> {
-    // 简化实现：记录日志
-    console.log(`Clearing cache for tags: ${tags.join(', ')}`);
-    
-    // 在单节点Redis环境下，可以通过模式匹配删除
-    // 这里简化为日志记录
-    try {
-      // 实际实现可以遍历所有配置的缓存类型并清除匹配的键
-    } catch (error) {
-      console.error(`Failed to clear cache by tags: ${error}`);
     }
   }
 

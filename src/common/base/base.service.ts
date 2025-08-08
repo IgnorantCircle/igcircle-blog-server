@@ -15,9 +15,9 @@ import { PaginationSortDto } from '@/common/dto/pagination.dto';
 
 export interface BaseEntity {
   id: string;
-  createdAt: number;
-  updatedAt: number;
-  deletedAt?: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt?: Date | null;
 }
 
 export interface CacheOptions {
@@ -60,7 +60,7 @@ export abstract class BaseService<T extends BaseEntity> {
   async findById(id: string, useCache: boolean = true): Promise<T> {
     if (useCache) {
       const cached = await this.cacheStrategy.get<T>(id, {
-        type: this.entityName as any,
+        type: this.entityName,
       });
       if (cached) {
         return cached;
@@ -77,7 +77,7 @@ export abstract class BaseService<T extends BaseEntity> {
 
     if (useCache) {
       await this.cacheStrategy.set(id, entity, {
-        type: this.entityName as any,
+        type: this.entityName,
         ttl: this.cacheOptions.ttl,
       });
     }
@@ -89,16 +89,11 @@ export abstract class BaseService<T extends BaseEntity> {
    * 创建实体
    */
   async create(createDto: DeepPartial<T>): Promise<T> {
-    const now = Date.now();
-    const entity = this.repository.create({
-      ...createDto,
-      createdAt: now,
-      updatedAt: now,
-    } as DeepPartial<T>);
+    const entity = this.repository.create(createDto);
 
     const savedEntity = await this.repository.save(entity);
     await this.cacheStrategy.set(savedEntity.id, savedEntity, {
-      type: this.entityName as any,
+      type: this.entityName,
       ttl: this.cacheOptions.ttl,
     });
 
@@ -111,16 +106,14 @@ export abstract class BaseService<T extends BaseEntity> {
   async update(id: string, updateDto: DeepPartial<T>): Promise<T> {
     const entity = await this.findById(id, false);
 
-    const updatedEntity = this.repository.merge(entity, {
-      ...updateDto,
-      updatedAt: Date.now(),
-    } as DeepPartial<T>);
+    // TypeORM 装饰器会自动管理 updatedAt
+    const updatedEntity = this.repository.merge(entity, updateDto);
 
     const savedEntity = await this.repository.save(updatedEntity);
 
     // 更新缓存
     await this.cacheStrategy.set(savedEntity.id, savedEntity, {
-      type: this.entityName as any,
+      type: this.entityName,
       ttl: this.cacheOptions.ttl,
     });
 
@@ -133,14 +126,12 @@ export abstract class BaseService<T extends BaseEntity> {
   async softRemove(id: string): Promise<void> {
     const entity = await this.findById(id, false);
 
-    await this.repository.update(id, {
-      deletedAt: Date.now(),
-      updatedAt: Date.now(),
-    } as any);
+    // TypeORM 的 @DeleteDateColumn 会自动管理 deletedAt
+    await this.repository.softDelete(id);
 
     // 清除缓存
     await this.cacheStrategy.del(entity.id, {
-      type: this.entityName as any,
+      type: this.entityName,
     });
   }
 
@@ -151,7 +142,7 @@ export abstract class BaseService<T extends BaseEntity> {
     const entity = await this.findById(id, false);
     await this.repository.delete(id);
     await this.cacheStrategy.del(entity.id, {
-      type: this.entityName as any,
+      type: this.entityName,
     });
   }
 
@@ -178,7 +169,7 @@ export abstract class BaseService<T extends BaseEntity> {
       } as FindOptionsWhere<T>,
       order: {
         [sortBy]: sortOrder,
-      } as any,
+      },
       skip,
       take: limit,
       relations,
@@ -200,18 +191,13 @@ export abstract class BaseService<T extends BaseEntity> {
       where: { id: In(ids) } as FindOptionsWhere<T>,
     });
 
-    await this.repository.update(
-      { id: In(ids) } as FindOptionsWhere<T>,
-      {
-        deletedAt: Date.now(),
-        updatedAt: Date.now(),
-      } as any,
-    );
+    // TypeORM 的 @DeleteDateColumn 会自动管理 deletedAt
+    await this.repository.softDelete({ id: In(ids) } as FindOptionsWhere<T>);
 
     // 清除缓存
     for (const entity of entities) {
       await this.cacheStrategy.del(entity.id, {
-        type: this.entityName as any,
+        type: this.entityName,
       });
     }
   }
@@ -242,7 +228,7 @@ export abstract class BaseService<T extends BaseEntity> {
   protected async batchCache(entities: T[]): Promise<void> {
     const promises = entities.map((entity) =>
       this.cacheStrategy.set(entity.id, entity, {
-        type: this.entityName as any,
+        type: this.entityName,
         ttl: this.cacheOptions.ttl,
       }),
     );

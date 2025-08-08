@@ -17,6 +17,7 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
 import { configFactory } from '@/common/config/config.validation';
 import { JwtAuthGuard } from '@/guards/auth.guard';
 import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
+import { CommonModule } from '@/common/common.module';
 
 @Module({
   imports: [
@@ -27,6 +28,9 @@ import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
       load: [configFactory],
       validate: configFactory,
     }),
+
+    // 通用模块
+    CommonModule,
 
     // 数据库模块
     TypeOrmModule.forRootAsync({

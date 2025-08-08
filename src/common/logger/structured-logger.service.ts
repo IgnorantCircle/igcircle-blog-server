@@ -58,12 +58,24 @@ export class StructuredLoggerService implements LoggerService {
    * 创建Winston日志器
    */
   private createLogger(): winston.Logger {
-    const logLevel = this.configService.get('logging.level', 'info');
-    const enableConsole = this.configService.get('logging.enableConsole', true);
-    const enableFile = this.configService.get('logging.enableFile', false);
-    const filePath = this.configService.get('logging.filePath', './logs');
-    const maxFiles = this.configService.get('logging.maxFiles', '14d');
-    const maxFileSize = this.configService.get('logging.maxFileSize', '20m');
+    const logLevel = this.configService.get<string>('logging.level', 'info');
+    const enableConsole = this.configService.get<boolean>(
+      'logging.enableConsole',
+      true,
+    );
+    const enableFile = this.configService.get<boolean>(
+      'logging.enableFile',
+      false,
+    );
+    const filePath = this.configService.get<string>(
+      'logging.filePath',
+      './logs',
+    );
+    const maxFiles = this.configService.get<string>('logging.maxFiles', '14d');
+    const maxFileSize = this.configService.get<string>(
+      'logging.maxFileSize',
+      '20m',
+    );
 
     const transports: winston.transport[] = [];
 
@@ -78,7 +90,7 @@ export class StructuredLoggerService implements LoggerService {
               const metaStr = Object.keys(meta).length
                 ? JSON.stringify(meta, null, 2)
                 : '';
-              return `${timestamp} [${level}] ${message} ${metaStr}`;
+              return `${String(timestamp)} [${String(level)}] ${String(message)} ${metaStr}`;
             }),
           ),
         }),
@@ -210,7 +222,7 @@ export class StructuredLoggerService implements LoggerService {
       userAgent: req.headers['user-agent'],
       method: req.method,
       url: req.url,
-      userId: (req as any).user?.id,
+      userId: (req as Request & { user?: { id: string } }).user?.id,
     });
   }
 

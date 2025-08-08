@@ -1,11 +1,5 @@
 import { SetMetadata, applyDecorators } from '@nestjs/common';
-import {
-  Repository,
-  SelectQueryBuilder,
-  EntityTarget,
-  FindOptionsWhere,
-  ObjectLiteral,
-} from 'typeorm';
+import { Repository, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 
 // 查询优化选项
 export interface QueryOptimizationOptions {
