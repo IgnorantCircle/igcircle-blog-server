@@ -7,18 +7,21 @@ import { UserModule } from '@/modules/user.module';
 import { ArticleModule } from '@/modules/article.module';
 import { CategoryModule } from '@/modules/category.module';
 import { TagModule } from '@/modules/tag.module';
+import { CommentModule } from '@/modules/comment.module';
 import { ExampleModule } from '@/modules/example.module';
 import { AuthModule } from '@/modules/auth.module';
+import { PublicModule } from '@/modules/public.module';
 import { AdminModule } from '@/modules/admin.module';
+import { UserApiModule } from '@/modules/user-api.module';
+import { ArticleImportModule } from '@/modules/article-import.module';
+import { CommonModule } from '@/common/common.module';
 import { getDatabaseConfig } from '@/config/database.config';
 import { getRedisConfig } from '@/config/redis.config';
+import { configFactory } from '@/common/config/config.validation';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import { ResponseInterceptor } from '@/common/interceptors/response.interceptor';
-import { configFactory } from '@/common/config/config.validation';
 import { JwtAuthGuard } from '@/guards/auth.guard';
 import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
-import { CommonModule } from '@/common/common.module';
-import { ArticleImportModule } from '@/modules/article-import.module';
 
 @Module({
   imports: [
@@ -53,12 +56,16 @@ import { ArticleImportModule } from '@/modules/article-import.module';
     ArticleModule,
     CategoryModule,
     TagModule,
+    CommentModule,
     ExampleModule,
     ArticleImportModule,
 
     // 认证模块
     AuthModule,
 
+    // API模块
+    PublicModule,
+    UserApiModule,
     AdminModule,
   ],
   providers: [

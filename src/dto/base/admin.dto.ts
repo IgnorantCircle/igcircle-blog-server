@@ -46,14 +46,14 @@ export class AdminCategoryDto {
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  createdAt: number;
+  createdAt: string;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  updatedAt: number;
+  updatedAt: string;
 }
 
 /**
@@ -93,14 +93,14 @@ export class AdminTagDto {
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  createdAt: number;
+  createdAt: string;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  updatedAt: number;
+  updatedAt: string;
 }
 
 /**
@@ -142,19 +142,34 @@ export class AdminUserDto {
   @Expose()
   role: string;
 
+  @ApiProperty({ description: '在线状态', enum: ['online', 'offline'] })
+  @Expose()
+  onlineStatus: string;
+
+  @ApiProperty({ description: '最后活跃时间' })
+  @Expose()
+  @Transform(({ value }): string | null =>
+    value
+      ? typeof value === 'number'
+        ? new Date(value).toISOString()
+        : value
+      : null,
+  )
+  lastActiveAt: string | null;
+
   @ApiProperty({ description: '创建时间' })
   @Expose()
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  createdAt: number;
+  createdAt: string;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  updatedAt: number;
+  updatedAt: string;
 
   // 密码永远不返回
   password?: string;
@@ -256,21 +271,21 @@ export class AdminArticleDto {
         : value
       : null,
   )
-  publishedAt: number | null;
+  publishedAt: string | null;
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  createdAt: number;
+  createdAt: string;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
   @Transform(({ value }): string =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  updatedAt: number;
+  updatedAt: string;
 
   @ApiProperty({ description: '作者信息', type: AdminUserDto })
   @Expose()

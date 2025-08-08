@@ -38,17 +38,17 @@ export class UserProfileDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: number | string | null }) =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  createdAt: number;
+  createdAt: string;
 
   @ApiProperty({ description: '更新时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: string | null }) =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  updatedAt: number;
+  updatedAt: string;
 
   // 隐藏敏感信息
   @Exclude()
@@ -84,10 +84,10 @@ export class UserPublicDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: string | null }) =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
-  createdAt: number;
+  createdAt: string;
 
   // 隐藏敏感信息
   @Exclude()
@@ -103,5 +103,5 @@ export class UserPublicDto {
   status: string;
 
   @Exclude()
-  updatedAt: number;
+  updatedAt: Date;
 }

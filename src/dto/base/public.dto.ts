@@ -36,6 +36,9 @@ export class PublicCategoryDto {
   isVisible: boolean;
 
   @Exclude()
+  isActive: boolean;
+
+  @Exclude()
   createdAt: number;
 
   @Exclude()
@@ -73,6 +76,9 @@ export class PublicTagDto {
   isVisible: boolean;
 
   @Exclude()
+  isActive: boolean;
+
+  @Exclude()
   createdAt: number;
 
   @Exclude()
@@ -105,7 +111,7 @@ export class PublicUserDto {
 
   @ApiProperty({ description: '创建时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: number | string }) =>
     typeof value === 'number' ? new Date(value).toISOString() : value,
   )
   createdAt: number;
@@ -177,7 +183,7 @@ export class PublicArticleDto {
 
   @ApiProperty({ description: '发布时间' })
   @Expose()
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: number | string | null }) =>
     value
       ? typeof value === 'number'
         ? new Date(value).toISOString()
@@ -214,6 +220,7 @@ export class PublicArticleDto {
   @Exclude()
   updatedAt: number;
 }
+
 /**
  * 公共文章详情响应DTO - 包含内容
  */
@@ -224,30 +231,55 @@ export class PublicArticleDetailDto extends PublicArticleDto {
 
   @ApiProperty({ description: '标签列表', type: [PublicTagDto] })
   @Expose()
-  @Transform(({ value }) => {
-    if (!value || !Array.isArray(value)) return [];
-    return value
-      .filter((tag: any) => tag.isActive)
-      .map((tag: any) => ({
-        id: tag.id,
-        name: tag.name,
-        color: tag.color,
-        articleCount: tag.articleCount,
-      }));
-  })
+  @Transform(
+    ({
+      value,
+    }: {
+      value: Array<{
+        id: string;
+        name: string;
+        color: string;
+        articleCount: number;
+        isActive: boolean;
+      }> | null;
+    }) => {
+      if (!value || !Array.isArray(value)) return [];
+      return value
+        .filter((tag) => tag.isActive)
+        .map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color,
+          articleCount: tag.articleCount,
+        }));
+    },
+  )
   tags: PublicTagDto[];
 
   @ApiProperty({ description: '分类信息', type: PublicCategoryDto })
   @Expose()
-  @Transform(({ value }) => {
-    if (!value || !value.isActive) return null;
-    return {
-      id: value.id,
-      name: value.name,
-      description: value.description,
-      icon: value.icon,
-      articleCount: value.articleCount,
-    };
-  })
+  @Transform(
+    ({
+      value,
+    }: {
+      value: {
+        id: string;
+        name: string;
+        description: string;
+        icon: string;
+        articleCount: number;
+        isActive: boolean;
+      } | null;
+    }) => {
+      if (!value || !value.isActive) return null;
+      return {
+        id: value.id,
+        name: value.name,
+        description: value.description,
+        icon: value.icon,
+        articleCount: value.articleCount,
+      };
+    },
+  )
   category: PublicCategoryDto | null;
 }
