@@ -15,6 +15,10 @@ import {
   UpdateArticleDto,
   ArticleQueryDto,
 } from '@/dto/article.dto';
+import { BaseService } from '@/common/base/base.service';
+import { CacheStrategyService } from '@/common/cache/cache-strategy.service';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { ConfigService } from '@nestjs/config';
 
 // 定义数据库错误接口
 interface DatabaseError {
@@ -23,15 +27,24 @@ interface DatabaseError {
 }
 
 @Injectable()
-export class ArticleService {
+export class ArticleService extends BaseService<Article> {
   constructor(
     @InjectRepository(Article)
     private readonly articleRepository: Repository<Article>,
     @Inject(CACHE_MANAGER)
     private readonly cacheManager: Cache,
     private readonly dataSource: DataSource,
-  ) {}
+    protected readonly cacheStrategy: CacheStrategyService,
+    protected readonly logger: StructuredLoggerService,
+    protected readonly configService: ConfigService,
+  ) {
+    super(articleRepository, cacheStrategy, 'article', configService);
+    this.logger.setContext({ module: 'ArticleService' });
+  }
 
+  /**
+   * 创建文章（重写BaseService的create方法以处理特殊逻辑）
+   */
   async create(createArticleDto: CreateArticleDto): Promise<Article> {
     const { status = 'draft', slug, tagIds, ...articleData } = createArticleDto;
 
@@ -40,11 +53,10 @@ export class ArticleService {
       // 生成或验证 slug
       let finalSlug = slug;
       if (!finalSlug) {
-        // 生成基础slug，不添加后缀
         finalSlug = this.generateSlug(articleData.title);
       }
 
-      // 检查slug是否已存在，如果存在则拒绝创建
+      // 检查slug是否已存在
       const existingArticle = await manager.findOne(Article, {
         where: { slug: finalSlug },
       });
@@ -59,7 +71,7 @@ export class ArticleService {
           status,
         };
 
-        // 只在有值时才设置时间戳字段，否则让 TypeORM 自动管理
+        // 只在有值时才设置时间戳字段
         if (articleData.createdAt !== undefined) {
           articleCreateData.createdAt = articleData.createdAt;
         }
@@ -79,35 +91,39 @@ export class ArticleService {
 
         const savedArticle = await manager.save(article);
 
-        // 缓存文章
-        await this.cacheArticle(savedArticle);
+        // 使用统一的缓存策略（包含slug缓存）
+        await Promise.all([
+          this.cacheStrategy.set(savedArticle.id, savedArticle, {
+            type: this.entityName,
+            ttl: this.cacheOptions.ttl,
+          }),
+          this.cacheStrategy.set(`slug:${savedArticle.slug}`, savedArticle, {
+            type: this.entityName,
+            ttl: this.cacheOptions.ttl,
+          }),
+        ]);
 
         return savedArticle;
       } catch (error: unknown) {
-        // 处理数据库唯一约束错误
         const dbError = error as DatabaseError;
-        if (
-          (dbError &&
-            typeof dbError === 'object' &&
-            'code' in dbError &&
-            dbError.code === 'ER_DUP_ENTRY') ||
-          (dbError &&
-            typeof dbError === 'object' &&
-            'errno' in dbError &&
-            dbError.errno === 1062)
-        ) {
+        if (dbError?.code === 'ER_DUP_ENTRY' || dbError?.errno === 1062) {
           throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
         }
         throw error;
       }
     });
   }
-  async findById(id: string): Promise<Article> {
-    const cacheKey = `article:${id}`;
-    const cachedArticle = await this.cacheManager.get<Article>(cacheKey);
-
-    if (cachedArticle) {
-      return cachedArticle;
+  /**
+   * 根据ID查找文章（重写BaseService方法以包含关联数据）
+   */
+  async findById(id: string, useCache: boolean = true): Promise<Article> {
+    if (useCache) {
+      const cached = await this.cacheStrategy.get<Article>(id, {
+        type: this.entityName,
+      });
+      if (cached) {
+        return cached;
+      }
     }
 
     const article = await this.articleRepository.findOne({
@@ -119,17 +135,23 @@ export class ArticleService {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
-    await this.cacheArticle(article);
+    if (useCache) {
+      await this.cacheStrategy.set(id, article, {
+        type: this.entityName,
+        ttl: this.cacheOptions.ttl,
+      });
+    }
 
     return article;
   }
 
   async findBySlug(slug: string): Promise<Article> {
-    const cacheKey = `article:slug:${slug}`;
-    const cachedArticle = await this.cacheManager.get<Article>(cacheKey);
-
-    if (cachedArticle) {
-      return cachedArticle;
+    // 使用统一的缓存策略，以slug为键
+    const cached = await this.cacheStrategy.get<Article>(`slug:${slug}`, {
+      type: 'article',
+    });
+    if (cached) {
+      return cached;
     }
 
     const article = await this.articleRepository.findOne({
@@ -141,14 +163,24 @@ export class ArticleService {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
-    await this.cacheArticle(article);
+    // 缓存文章，同时缓存ID和slug两个键
+    await Promise.all([
+      this.cacheStrategy.set(article.id, article, {
+        type: 'article',
+        ttl: 600,
+      }),
+      this.cacheStrategy.set(`slug:${slug}`, article, {
+        type: 'article',
+        ttl: 600,
+      }),
+    ]);
 
     return article;
   }
 
   async findAll(
     query: ArticleQueryDto,
-  ): Promise<{ articles: Article[]; total: number }> {
+  ): Promise<{ items: Article[]; total: number }> {
     const {
       page = 1,
       limit = 10,
@@ -199,74 +231,59 @@ export class ArticleService {
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
-    return { articles, total };
+    return { items: articles, total };
   }
 
+  /**
+   * 更新文章（重写BaseService方法以处理特殊逻辑）
+   */
   async update(
     id: string,
     updateArticleDto: UpdateArticleDto,
   ): Promise<Article> {
-    return await this.dataSource.transaction(async (manager) => {
-      const article = await manager.findOne(Article, {
-        where: { id },
-        relations: ['tags'],
+    const article = await this.findById(id, false);
+
+    // 如果更新了slug，检查新slug是否已存在
+    if (updateArticleDto.slug && updateArticleDto.slug !== article.slug) {
+      const existingArticle = await this.articleRepository.findOne({
+        where: { slug: updateArticleDto.slug, id: Not(id) },
       });
-      if (!article) {
-        throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+      if (existingArticle) {
+        throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
       }
+    }
 
-      const { slug, tagIds, ...updateData } = updateArticleDto;
-
-      // 如果更新slug，检查新slug是否已被其他文章使用
-      if (slug && slug !== article.slug) {
-        const existingArticle = await manager.findOne(Article, {
-          where: { slug, id: Not(id) },
+    // 处理标签更新
+    if (updateArticleDto.tagIds !== undefined) {
+      if (updateArticleDto.tagIds.length > 0) {
+        const tags = await this.dataSource.getRepository(Tag).find({
+          where: { id: In(updateArticleDto.tagIds) },
         });
-        if (existingArticle) {
-          throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
-        }
+        article.tags = tags;
+      } else {
+        article.tags = [];
       }
+    }
 
-      try {
-        Object.assign(article, updateData, slug ? { slug } : {});
-        // TypeORM 的 @UpdateDateColumn 装饰器会自动管理 updatedAt
+    // 移除 tagIds，因为它不是 Article 实体的属性
+    const { tagIds, ...updateData } = updateArticleDto;
 
-        // 处理标签关联
-        if (tagIds !== undefined) {
-          if (tagIds.length > 0) {
-            const tags = await manager.getRepository(Tag).find({
-              where: { id: In(tagIds) },
-            });
-            article.tags = tags;
-          } else {
-            article.tags = [];
-          }
-        }
+    const updatedArticle = this.repository.merge(article, updateData);
+    const savedArticle = await this.repository.save(updatedArticle);
 
-        const savedArticle = await manager.save(article);
+    // 更新缓存（包含slug缓存）
+    await Promise.all([
+      this.cacheStrategy.set(savedArticle.id, savedArticle, {
+        type: this.entityName,
+        ttl: this.cacheOptions.ttl,
+      }),
+      this.cacheStrategy.set(`slug:${savedArticle.slug}`, savedArticle, {
+        type: this.entityName,
+        ttl: this.cacheOptions.ttl,
+      }),
+    ]);
 
-        await this.clearArticleCache(id, article.slug);
-        await this.cacheArticle(savedArticle);
-
-        return savedArticle;
-      } catch (error: unknown) {
-        // 处理数据库唯一约束错误
-        const dbError = error as DatabaseError;
-        if (
-          (dbError &&
-            typeof dbError === 'object' &&
-            'code' in dbError &&
-            dbError.code === 'ER_DUP_ENTRY') ||
-          (dbError &&
-            typeof dbError === 'object' &&
-            'errno' in dbError &&
-            dbError.errno === 1062)
-        ) {
-          throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
-        }
-        throw error;
-      }
-    });
+    return savedArticle;
   }
 
   async publish(
@@ -282,8 +299,21 @@ export class ArticleService {
 
     const publishedArticle = await this.articleRepository.save(article);
 
-    // 更新缓存
-    await this.cacheArticle(publishedArticle);
+    // 使用统一的缓存策略缓存文章
+    await Promise.all([
+      this.cacheStrategy.set(publishedArticle.id, publishedArticle, {
+        type: 'article',
+        ttl: 600,
+      }),
+      this.cacheStrategy.set(
+        `slug:${publishedArticle.slug}`,
+        publishedArticle,
+        {
+          type: 'article',
+          ttl: 600,
+        },
+      ),
+    ]);
 
     return publishedArticle;
   }
@@ -302,23 +332,28 @@ export class ArticleService {
     await this.clearArticleCache(id);
   }
 
+  /**
+   * 删除文章（重写BaseService方法以清除slug缓存）
+   */
   async remove(id: string): Promise<void> {
-    const article = await this.findById(id);
+    const article = await this.findById(id, false);
 
-    // 使用 TypeORM 的软删除
-    await this.articleRepository.softDelete({ id });
-    // TypeORM 的 @DeleteDateColumn 和 @UpdateDateColumn 装饰器会自动管理时间戳
+    // 使用BaseService的软删除
+    await this.softRemove(id);
 
-    // 清除缓存
-    await this.clearArticleCache(id, article.slug);
+    // 额外清除slug缓存
+    await this.cacheStrategy.del(`slug:${article.slug}`, {
+      type: this.entityName,
+    });
   }
 
   async getPopular(limit: number = 10): Promise<Article[]> {
-    const cacheKey = `articles:popular:${limit}`;
-    const cachedArticles = await this.cacheManager.get<Article[]>(cacheKey);
-
-    if (cachedArticles) {
-      return cachedArticles;
+    // 使用统一的缓存策略
+    const cached = await this.cacheStrategy.get<Article[]>(`popular:${limit}`, {
+      type: 'article',
+    });
+    if (cached) {
+      return cached;
     }
 
     const articles = await this.articleRepository.find({
@@ -328,17 +363,22 @@ export class ArticleService {
       relations: ['author', 'category', 'tags'],
     });
 
-    await this.cacheManager.set(cacheKey, articles, 3600); // 1小时缓存
+    // 使用统一的缓存策略，缓存1小时
+    await this.cacheStrategy.set(`popular:${limit}`, articles, {
+      type: 'article',
+      ttl: 3600,
+    });
     return articles;
   }
 
   // 获取最新文章
   async getRecent(limit: number = 10): Promise<Article[]> {
-    const cacheKey = `articles:recent:${limit}`;
-    const cachedArticles = await this.cacheManager.get<Article[]>(cacheKey);
-
-    if (cachedArticles) {
-      return cachedArticles;
+    // 使用统一的缓存策略
+    const cached = await this.cacheStrategy.get<Article[]>(`recent:${limit}`, {
+      type: 'article',
+    });
+    if (cached) {
+      return cached;
     }
 
     const articles = await this.articleRepository.find({
@@ -348,7 +388,11 @@ export class ArticleService {
       relations: ['author', 'category', 'tags'],
     });
 
-    await this.cacheManager.set(cacheKey, articles, 3600); // 1小时缓存
+    // 使用统一的缓存策略，缓存1小时
+    await this.cacheStrategy.set(`recent:${limit}`, articles, {
+      type: 'article',
+      ttl: 3600,
+    });
     return articles;
   }
 
@@ -381,8 +425,17 @@ export class ArticleService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 更新缓存
-    await this.cacheArticle(updatedArticle);
+    // 使用统一的缓存策略缓存文章
+    await Promise.all([
+      this.cacheStrategy.set(updatedArticle.id, updatedArticle, {
+        type: 'article',
+        ttl: 600,
+      }),
+      this.cacheStrategy.set(`slug:${updatedArticle.slug}`, updatedArticle, {
+        type: 'article',
+        ttl: 600,
+      }),
+    ]);
 
     return updatedArticle;
   }
@@ -394,8 +447,17 @@ export class ArticleService {
 
     const archivedArticle = await this.articleRepository.save(article);
 
-    // 更新缓存
-    await this.cacheArticle(archivedArticle);
+    // 使用统一的缓存策略缓存文章
+    await Promise.all([
+      this.cacheStrategy.set(archivedArticle.id, archivedArticle, {
+        type: 'article',
+        ttl: 600,
+      }),
+      this.cacheStrategy.set(`slug:${archivedArticle.slug}`, archivedArticle, {
+        type: 'article',
+        ttl: 600,
+      }),
+    ]);
 
     return archivedArticle;
   }
@@ -407,8 +469,17 @@ export class ArticleService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 更新缓存
-    await this.cacheArticle(updatedArticle);
+    // 使用统一的缓存策略缓存文章
+    await Promise.all([
+      this.cacheStrategy.set(updatedArticle.id, updatedArticle, {
+        type: 'article',
+        ttl: this.configService.get('cache.ttl.article') || 600,
+      }),
+      this.cacheStrategy.set(`slug:${updatedArticle.slug}`, updatedArticle, {
+        type: 'article',
+        ttl: this.configService.get('cache.ttl.article') || 600,
+      }),
+    ]);
 
     return updatedArticle;
   }
@@ -420,8 +491,17 @@ export class ArticleService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 更新缓存
-    await this.cacheArticle(updatedArticle);
+    // 使用统一的缓存策略缓存文章
+    await Promise.all([
+      this.cacheStrategy.set(updatedArticle.id, updatedArticle, {
+        type: 'article',
+        ttl: 600,
+      }),
+      this.cacheStrategy.set(`slug:${updatedArticle.slug}`, updatedArticle, {
+        type: 'article',
+        ttl: 600,
+      }),
+    ]);
 
     return updatedArticle;
   }
@@ -513,8 +593,8 @@ export class ArticleService {
 
     const queryBuilder = this.articleRepository
       .createQueryBuilder('article')
-      .select('YEAR(FROM_UNIXTIME(article.publishedAt / 1000))', 'year')
-      .addSelect('MONTH(FROM_UNIXTIME(article.publishedAt / 1000))', 'month')
+      .select('YEAR(article.publishedAt)', 'year')
+      .addSelect('MONTH(article.publishedAt)', 'month')
       .addSelect('COUNT(article.id)', 'count')
       .where('article.status = :status', { status: 'published' })
       .andWhere('article.deletedAt IS NULL')
@@ -523,21 +603,19 @@ export class ArticleService {
       .addOrderBy('month', 'DESC');
 
     if (year) {
-      queryBuilder.andWhere(
-        'YEAR(FROM_UNIXTIME(article.publishedAt / 1000)) = :year',
-        { year },
-      );
+      queryBuilder.andWhere('YEAR(article.publishedAt) = :year', { year });
     }
 
     if (month) {
-      queryBuilder.andWhere(
-        'MONTH(FROM_UNIXTIME(article.publishedAt / 1000)) = :month',
-        { month },
-      );
+      queryBuilder.andWhere('MONTH(article.publishedAt) = :month', { month });
     }
 
     const result = await queryBuilder.getRawMany();
-    return result as { year: number; month: number; count: number }[];
+    return result.map((item) => ({
+      year: parseInt(item.year),
+      month: parseInt(item.month),
+      count: parseInt(item.count),
+    }));
   }
 
   async getRelated(id: string, limit: number = 5): Promise<Article[]> {
@@ -593,7 +671,7 @@ export class ArticleService {
         throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
       }
 
-      const { slug, ...updateData } = updateArticleDto;
+      const { slug, tagIds, ...updateData } = updateArticleDto;
 
       // 如果更新slug，检查新slug是否已被其他文章使用
       if (slug && slug !== article.slug) {
@@ -605,12 +683,34 @@ export class ArticleService {
         }
       }
 
+      // 处理标签更新
+      if (tagIds !== undefined) {
+        if (tagIds.length > 0) {
+          const tags = await manager.getRepository(Tag).find({
+            where: { id: In(tagIds) },
+          });
+          article.tags = tags;
+        } else {
+          article.tags = [];
+        }
+      }
+
       try {
         Object.assign(article, updateData, slug ? { slug } : {});
         const savedArticle = await manager.save(article);
 
         await this.clearArticleCache(id, article.slug);
-        await this.cacheArticle(savedArticle);
+        // 使用统一的缓存策略缓存文章
+        await Promise.all([
+          this.cacheStrategy.set(savedArticle.id, savedArticle, {
+            type: 'article',
+            ttl: 600,
+          }),
+          this.cacheStrategy.set(`slug:${savedArticle.slug}`, savedArticle, {
+            type: 'article',
+            ttl: 600,
+          }),
+        ]);
 
         return savedArticle;
       } catch (error: unknown) {
@@ -661,27 +761,64 @@ export class ArticleService {
     await this.clearArticleCache(id, article.slug);
   }
 
-  private async cacheArticle(article: Article): Promise<void> {
-    const ttl = 60 * 60; // 1小时
-
-    await Promise.all([
-      this.cacheManager.set(`article:${article.id}`, article, ttl),
-      this.cacheManager.set(`article:slug:${article.slug}`, article, ttl),
-    ]);
-  }
+  // 已移除cacheArticle方法，使用统一的缓存策略
 
   private async clearArticleCache(id: string, slug?: string): Promise<void> {
-    const promises = [
-      this.cacheManager.del(`article:${id}`),
-      this.cacheManager.del('articles:popular:10'),
-      this.cacheManager.del('articles:recent:10'),
-    ];
+    try {
+      // 清除特定文章的缓存
+      const specificCachePromises = [
+        this.cacheStrategy.del(id, { type: 'article' }),
+      ];
 
-    if (slug) {
-      promises.push(this.cacheManager.del(`article:slug:${slug}`));
+      if (slug) {
+        specificCachePromises.push(
+          this.cacheStrategy.del(`slug:${slug}`, { type: 'article' }),
+        );
+      }
+
+      // 清除聚合数据缓存（这些缓存在文章变更时需要失效）
+      const aggregateCacheKeys = [
+        'popular:10',
+        'recent:10',
+        'featured:10',
+        'statistics',
+      ];
+
+      const aggregateCachePromises = aggregateCacheKeys.map((key) =>
+        this.cacheStrategy
+          .del(key, { type: 'article' })
+          .catch((err) =>
+            console.warn(`Failed to delete aggregate cache ${key}:`, err),
+          ),
+      );
+
+      // 清除按模式匹配的缓存（如搜索结果、归档数据等）
+      const patterns = [
+        'article:search:*',
+        'article:archive:*',
+        'article:related:*',
+      ];
+
+      const patternPromises = patterns.map((pattern) =>
+        this.cacheStrategy
+          .clearCacheByPattern(pattern)
+          .catch((err) =>
+            console.warn(`Failed to clear cache pattern ${pattern}:`, err),
+          ),
+      );
+
+      await Promise.all([
+        ...specificCachePromises,
+        ...aggregateCachePromises,
+        ...patternPromises,
+      ]);
+
+      console.log(
+        `Cleared article cache for ID: ${id}${slug ? `, slug: ${slug}` : ''}`,
+      );
+    } catch (error) {
+      console.error('Failed to clear article cache:', error);
     }
-
-    await Promise.all(promises);
   }
 
   private generateSlug(title: string): string {

@@ -17,16 +17,29 @@ import {
 } from '@/dto/tag.dto';
 import { PaginatedResponse } from '@/common/interfaces/response.interface';
 import { ErrorCode } from '@/common/constants/error-codes';
+import { BaseService } from '@/common/base/base.service';
+import { CacheStrategyService } from '@/common/cache/cache-strategy.service';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class TagService {
+export class TagService extends BaseService<Tag> {
   constructor(
     @InjectRepository(Tag)
     private readonly tagRepository: Repository<Tag>,
     @Inject(CACHE_MANAGER)
     private readonly cacheManager: Cache,
-  ) {}
+    protected readonly cacheStrategy: CacheStrategyService,
+    protected readonly logger: StructuredLoggerService,
+    protected readonly configService: ConfigService,
+  ) {
+    super(tagRepository, cacheStrategy, 'tag', configService);
+    this.logger.setContext({ module: 'TagService' });
+  }
 
+  /**
+   * 创建标签（重写BaseService方法以处理slug生成和唯一性检查）
+   */
   async create(createTagDto: CreateTagDto): Promise<Tag> {
     const { name, slug, ...tagData } = createTagDto;
 
@@ -47,16 +60,14 @@ export class TagService {
       throw new ConflictException(ErrorCode.TAG_NAME_EXISTS, '标签slug已存在');
     }
 
-    const now = Date.now();
-    const tag = this.tagRepository.create({
+    const tagCreateData = {
       ...tagData,
       name,
       slug: finalSlug,
-      createdAt: now,
-      updatedAt: now,
-    });
+    };
 
-    const savedTag = await this.tagRepository.save(tag);
+    // 使用BaseService的create方法
+    const savedTag = await super.create(tagCreateData);
     await this.clearTagCache();
     return savedTag;
   }
@@ -104,7 +115,7 @@ export class TagService {
     const finalSortBy = validSortFields.includes(sortBy)
       ? sortBy
       : 'popularity';
-    queryBuilder.orderBy(`tag.${finalSortBy}`, sortOrder as 'ASC' | 'DESC');
+    queryBuilder.orderBy(`tag.${finalSortBy}`, sortOrder);
 
     const [items, total] = await queryBuilder
       .skip((page - 1) * limit)
@@ -122,9 +133,18 @@ export class TagService {
     };
   }
 
-  async findById(id: string): Promise<Tag> {
-    const cacheKey = `tag:${id}`;
-    const cached = await this.cacheManager.get<Tag>(cacheKey);
+  /**
+   * 根据ID查找标签（重写BaseService方法以包含关联数据）
+   */
+  async findById(id: string, includeRelations = true): Promise<Tag> {
+    if (!includeRelations) {
+      return super.findById(id);
+    }
+
+    // 使用统一的缓存策略
+    const cached = await this.cacheStrategy.get<Tag>(id, {
+      type: 'tag',
+    });
     if (cached) {
       return cached;
     }
@@ -138,7 +158,12 @@ export class TagService {
       throw new NotFoundException(ErrorCode.TAG_NOT_FOUND);
     }
 
-    await this.cacheManager.set(cacheKey, tag, 300000); // 5分钟缓存
+    // 缓存标签信息
+    await this.cacheStrategy.set(id, tag, {
+      type: 'tag',
+      ttl: 1800, // 30分钟
+    });
+
     return tag;
   }
 
@@ -182,6 +207,9 @@ export class TagService {
     });
   }
 
+  /**
+   * 更新标签（重写BaseService方法以处理slug冲突检查）
+   */
   async update(id: string, updateTagDto: UpdateTagDto): Promise<Tag> {
     const tag = await this.findById(id);
     const { name, slug, ...updateData } = updateTagDto;
@@ -209,18 +237,21 @@ export class TagService {
       }
     }
 
-    Object.assign(tag, {
+    const updateDataWithValidation = {
       ...updateData,
       ...(name && { name }),
       ...(slug && { slug }),
-      updatedAt: Date.now(),
-    });
+    };
 
-    const updatedTag = await this.tagRepository.save(tag);
+    // 使用BaseService的update方法
+    const updatedTag = await super.update(id, updateDataWithValidation);
     await this.clearTagCache();
     return updatedTag;
   }
 
+  /**
+   * 删除标签（重写BaseService方法以处理关联文章检查）
+   */
   async remove(id: string): Promise<void> {
     const tag = await this.findById(id);
 
@@ -232,9 +263,8 @@ export class TagService {
       );
     }
 
-    // 逻辑删除
-    const now = Date.now();
-    await this.tagRepository.update({ id }, { deletedAt: now, updatedAt: now });
+    // 使用BaseService的softRemove方法
+    await super.softRemove(id);
     await this.clearTagCache();
   }
 
@@ -376,9 +406,37 @@ export class TagService {
   }
 
   private async clearTagCache(): Promise<void> {
-    const keys = ['tags:popular:*', 'tags:cloud', 'tag:*'];
-    for (const key of keys) {
-      await this.cacheManager.del(key);
+    try {
+      // 使用统一的缓存策略清除相关缓存
+      await this.cacheStrategy.clearByTags(['tag', 'content']);
+
+      // 清除特定的缓存键（这些键不遵循标准前缀模式）
+      const specificKeys = ['tags:cloud'];
+
+      const deletePromises = specificKeys.map((key) =>
+        this.cacheManager
+          .del(key)
+          .catch((err) =>
+            console.warn(`Failed to delete cache key ${key}:`, err),
+          ),
+      );
+
+      // 清除按模式匹配的键
+      const patterns = ['tags:popular:*', 'tag:slug:*'];
+
+      for (const pattern of patterns) {
+        deletePromises.push(
+          this.cacheStrategy
+            .clearCacheByPattern(pattern)
+            .catch((err) =>
+              console.warn(`Failed to clear cache pattern ${pattern}:`, err),
+            ),
+        );
+      }
+
+      await Promise.all(deletePromises);
+    } catch (error) {
+      console.error('Failed to clear tag cache:', error);
     }
   }
 }
