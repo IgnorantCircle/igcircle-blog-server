@@ -111,6 +111,7 @@ export class StructuredLoggerService implements LoggerService {
         winston.format.json(),
       ),
       transports,
+      exitOnError: false,
       // 异常处理
       exceptionHandlers: enableFile
         ? [
@@ -121,7 +122,7 @@ export class StructuredLoggerService implements LoggerService {
               maxSize: maxFileSize,
             }),
           ]
-        : [],
+        : undefined,
       // 拒绝处理
       rejectionHandlers: enableFile
         ? [
@@ -132,7 +133,7 @@ export class StructuredLoggerService implements LoggerService {
               maxSize: maxFileSize,
             }),
           ]
-        : [],
+        : undefined,
     });
   }
 

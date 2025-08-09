@@ -29,8 +29,11 @@ export class ArticleService extends BaseService<Article> {
     @InjectRepository(Article)
     private readonly articleRepository: Repository<Article>,
     private readonly dataSource: DataSource,
+    @Inject(ArticleStatisticsService)
     private readonly articleStatisticsService: ArticleStatisticsService,
+    @Inject(ArticleQueryService)
     private readonly articleQueryService: ArticleQueryService,
+    @Inject(ArticleStatusService)
     private readonly articleStatusService: ArticleStatusService,
     @Inject(CacheService) cacheService: CacheService,
     @Inject(ConfigService) configService: ConfigService,

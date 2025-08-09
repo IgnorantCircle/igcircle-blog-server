@@ -141,7 +141,7 @@ export class FieldVisibilityInterceptor implements NestInterceptor {
     // 获取所有属性（包括继承的）
     const allKeys = new Set([
       ...Object.keys(obj),
-      ...Object.getOwnPropertyNames(prototype),
+      ...(prototype ? Object.getOwnPropertyNames(prototype) : []),
     ]);
 
     for (const key of allKeys) {

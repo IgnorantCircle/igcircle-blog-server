@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Article } from '@/entities/article.entity';
@@ -12,7 +12,9 @@ export class ArticleStatisticsService {
   constructor(
     @InjectRepository(Article)
     private readonly articleRepository: Repository<Article>,
+    @Inject(CacheService)
     private readonly cacheService: CacheService,
+    @Inject(StructuredLoggerService)
     private readonly logger: StructuredLoggerService,
   ) {
     this.logger.setContext({ module: 'ArticleStatisticsService' });

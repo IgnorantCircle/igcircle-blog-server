@@ -11,10 +11,12 @@ import { TagService } from '@/services/tag.service';
 import { CategoryService } from '@/services/category.service';
 import { AuthModule } from './auth.module';
 import { SharedAuthModule } from './shared-auth.module';
+import { CommonModule } from '@/common/common.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Article, Tag, Category]),
+    CommonModule,
     AuthModule,
     SharedAuthModule,
   ],

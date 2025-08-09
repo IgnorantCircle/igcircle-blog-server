@@ -518,7 +518,9 @@ export class ArticleQueryService {
 
     // 有共同标签的文章（优化：使用EXISTS子查询）
     if (currentArticle.tags && currentArticle.tags.length > 0) {
-      const tagIds = currentArticle.tags.map((tag) => tag.id);
+      const tagIds = currentArticle.tags.map(
+        (tag: any) => (tag as { id: string }).id,
+      );
       conditions.push(
         `EXISTS (
           SELECT 1 FROM article_tags_tag att 
@@ -606,7 +608,6 @@ export class ArticleQueryService {
       includeCategory = true,
       includeTags = true,
       includeAuthor = true,
-      includeStats = false,
     } = options;
 
     const queryBuilder = this.articleRepository.createQueryBuilder('article');
@@ -622,14 +623,6 @@ export class ArticleQueryService {
 
     if (includeAuthor) {
       queryBuilder.leftJoinAndSelect('article.author', 'author');
-    }
-
-    // 可选的统计信息加载
-    if (includeStats) {
-      queryBuilder
-        .addSelect('article.viewCount')
-        .addSelect('article.likeCount')
-        .addSelect('article.commentCount');
     }
 
     return queryBuilder;
