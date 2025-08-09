@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,7 +17,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '@/guards/auth.guard';
+
 import { RolesGuard } from '@/guards/roles.guard';
 import { Roles } from '@/decorators/roles.decorator';
 import { Role } from '@/enums/role.enum';
@@ -28,100 +29,94 @@ import {
   CategoryStatsDto,
 } from '@/dto/category.dto';
 import { Category } from '@/entities/category.entity';
-import { ResponseUtil } from '@/common/utils/response.util';
+import { PaginatedResponse } from '@/common/interfaces/response.interface';
 import {
-  ApiResponse as ApiResponseInterface,
-  PaginatedResponse,
-} from '@/common/interfaces/response.interface';
+  FieldVisibilityInterceptor,
+  UseAdminVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
 
 @ApiTags('管理端API - 分类管理')
 @Controller('admin/categories')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @Roles(Role.ADMIN)
 @ApiBearerAuth('JWT-auth')
+@UseInterceptors(FieldVisibilityInterceptor)
 export class AdminCategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Post()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '创建分类' })
   @ApiResponse({ status: 201, description: '分类创建成功' })
   async create(
     @Body() createCategoryDto: CreateCategoryDto,
-  ): Promise<ApiResponseInterface<Category>> {
+  ): Promise<Category> {
     const category = await this.categoryService.create(createCategoryDto);
-    return ResponseUtil.success(category, '分类创建成功');
+    return category;
   }
 
   @Get()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取分类列表' })
   @ApiResponse({ status: 200, description: '获取成功', type: [Category] })
   async findAll(
     @Query() query: CategoryQueryDto,
-  ): Promise<ApiResponseInterface<PaginatedResponse<Category>>> {
-    const result = await this.categoryService.findAll(query);
-    return ResponseUtil.paginated(
-      result.items,
-      result.total,
-      result.page,
-      result.limit,
-      '获取分类列表成功',
-    );
+  ): Promise<PaginatedResponse<Category>> {
+    return await this.categoryService.findAllPaginated(query);
   }
 
   @Get('tree')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取分类树形结构' })
   @ApiResponse({ status: 200, description: '获取分类树形结构成功' })
-  async getTree(): Promise<ApiResponseInterface<Category[]>> {
+  async getTree(): Promise<Category[]> {
     const tree = await this.categoryService.getTree();
-    return ResponseUtil.success(tree, '获取分类树形结构成功');
+    return tree;
   }
 
   @Get('stats')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取分类统计信息' })
   @ApiResponse({ status: 200, description: '获取分类统计信息成功' })
-  async getStats(): Promise<ApiResponseInterface<CategoryStatsDto[]>> {
+  async getStats(): Promise<CategoryStatsDto[]> {
     const stats = await this.categoryService.getStats();
-    return ResponseUtil.success(stats, '获取分类统计信息成功');
+    return stats;
   }
 
   @Get(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '根据ID获取分类' })
   @ApiResponse({ status: 200, description: '获取分类成功' })
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseInterface<Category>> {
+  async findById(@Param('id', ParseUUIDPipe) id: string): Promise<Category> {
     const category = await this.categoryService.findById(id);
-    return ResponseUtil.success(category, '获取分类成功');
+    return category;
   }
 
   @Get('slug/:slug')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '根据slug获取分类' })
   @ApiResponse({ status: 200, description: '获取分类成功' })
-  async findBySlug(
-    @Param('slug') slug: string,
-  ): Promise<ApiResponseInterface<Category>> {
+  async findBySlug(@Param('slug') slug: string): Promise<Category> {
     const category = await this.categoryService.findBySlug(slug);
-    return ResponseUtil.success(category, '获取分类成功');
+    return category;
   }
 
   @Patch(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '更新分类' })
   @ApiResponse({ status: 200, description: '分类更新成功' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCategoryDto: UpdateCategoryDto,
-  ): Promise<ApiResponseInterface<Category>> {
+  ): Promise<Category> {
     const category = await this.categoryService.update(id, updateCategoryDto);
-    return ResponseUtil.success(category, '分类更新成功');
+    return category;
   }
 
   @Delete(':id')
   @ApiOperation({ summary: '删除分类' })
   @ApiResponse({ status: 200, description: '分类删除成功' })
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseInterface<null>> {
+  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     await this.categoryService.remove(id);
-    return ResponseUtil.success(null, '分类删除成功');
   }
 }

@@ -20,6 +20,7 @@ import { getRedisConfig } from '@/config/redis.config';
 import { configFactory } from '@/common/config/config.validation';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import { ResponseInterceptor } from '@/common/interceptors/response.interceptor';
+import { SharedAuthModule } from '@/modules/shared-auth.module';
 import { JwtAuthGuard } from '@/guards/auth.guard';
 import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
 
@@ -35,6 +36,7 @@ import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
 
     // 通用模块
     CommonModule,
+    SharedAuthModule,
 
     // 数据库模块
     TypeOrmModule.forRootAsync({

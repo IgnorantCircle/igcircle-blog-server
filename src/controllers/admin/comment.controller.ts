@@ -11,6 +11,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -20,7 +21,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { CommentService } from '@/services/comment.service';
-import { JwtAuthGuard } from '@/guards/auth.guard';
+
 import { RolesGuard } from '@/guards/roles.guard';
 import { Roles } from '@/decorators/roles.decorator';
 import { Role } from '@/enums/role.enum';
@@ -30,57 +31,62 @@ import {
   CreateCommentDto,
   AdminUpdateCommentDto,
   CommentQueryDto,
+  CommentStatus,
 } from '@/dto/comment.dto';
-import { ResponseUtil } from '@/common/utils/response.util';
-import { ApiResponse as ApiResponseInterface } from '@/common/interfaces/response.interface';
+import {
+  FieldVisibilityInterceptor,
+  UseAdminVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
+import { PaginationUtil } from '@/common/utils/pagination.util';
 
 @ApiTags('管理员评论管理')
 @Controller('admin/comments')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @Roles(Role.ADMIN)
 @ApiBearerAuth()
+@UseInterceptors(FieldVisibilityInterceptor)
 export class AdminCommentController {
   constructor(private readonly commentService: CommentService) {}
 
   @Post()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '管理员创建评论' })
   @ApiResponse({ status: 201, description: '评论创建成功' })
   async create(
     @Body() createCommentDto: CreateCommentDto,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
-    const comment = await this.commentService.create(createCommentDto, user.id);
+  ): Promise<any> {
+    const comment = await this.commentService.createComment(
+      createCommentDto,
+      user.id,
+    );
 
-    return ResponseUtil.created(comment, '评论创建成功');
+    return comment;
   }
 
   @Get()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取所有评论列表（管理员）' })
   @ApiResponse({ status: 200, description: '获取评论列表成功' })
-  async findAll(
-    @Query() query: CommentQueryDto,
-  ): Promise<ApiResponseInterface<any>> {
+  async findAll(@Query() query: CommentQueryDto): Promise<any> {
     // 管理员可以查看所有状态的评论
     const queryDto = new CommentQueryDto();
     Object.assign(queryDto, query);
     queryDto.status = query.status; // 不设置默认状态过滤
 
-    const { comments, total } = await this.commentService.findAll(queryDto);
+    const result = await this.commentService.findAllPaginated(queryDto);
 
-    return ResponseUtil.paginated(
-      comments,
-      total,
-      query.page || 1,
-      query.limit || 10,
-      '获取评论列表成功',
-    );
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    return PaginationUtil.fromQueryResult(result, page, limit);
   }
 
   @Get('stats')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取评论统计信息' })
   @ApiResponse({ status: 200, description: '获取统计信息成功' })
-  async getStatistics(): Promise<ApiResponseInterface<any>> {
-    const createQueryDto = (status?: string) => {
+  async getStatistics(): Promise<any> {
+    const createQueryDto = (status?: CommentStatus) => {
       const queryDto = new CommentQueryDto();
       queryDto.limit = 1;
       if (status) queryDto.status = status;
@@ -89,10 +95,16 @@ export class AdminCommentController {
 
     const [activeComments, hiddenComments, deletedComments, totalComments] =
       await Promise.all([
-        this.commentService.findAll(createQueryDto('active')),
-        this.commentService.findAll(createQueryDto('hidden')),
-        this.commentService.findAll(createQueryDto('deleted')),
-        this.commentService.findAll(createQueryDto()),
+        this.commentService.findAllComments(
+          createQueryDto(CommentStatus.ACTIVE),
+        ),
+        this.commentService.findAllComments(
+          createQueryDto(CommentStatus.HIDDEN),
+        ),
+        this.commentService.findAllComments(
+          createQueryDto(CommentStatus.DELETED),
+        ),
+        this.commentService.findAllComments(createQueryDto()),
       ]);
 
     const statistics = {
@@ -102,46 +114,45 @@ export class AdminCommentController {
       deleted: deletedComments.total,
     };
 
-    return ResponseUtil.success(statistics, '获取统计信息成功');
+    return statistics;
   }
 
   @Get('pending-review')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取待审核评论列表' })
   @ApiResponse({ status: 200, description: '获取待审核评论列表成功' })
-  async getPendingReview(
-    @Query() query: CommentQueryDto,
-  ): Promise<ApiResponseInterface<any>> {
+  async getPendingReview(@Query() query: CommentQueryDto): Promise<any> {
     // 这里可以根据业务需求定义待审核的条件
     // 例如：新注册用户的评论、包含敏感词的评论等
     const queryDto = new CommentQueryDto();
     Object.assign(queryDto, query);
-    queryDto.status = 'active'; // 可以扩展为更复杂的审核逻辑
+    queryDto.status = CommentStatus.ACTIVE;
     queryDto.sortBy = 'createdAt';
     queryDto.sortOrder = 'DESC';
 
-    const { comments, total } = await this.commentService.findAll(queryDto);
+    const { comments, total } =
+      await this.commentService.findAllComments(queryDto);
 
-    return ResponseUtil.paginated(
+    return {
       comments,
       total,
-      query.page || 1,
-      query.limit || 10,
-      '获取待审核评论列表成功',
-    );
+      page: query.page || 1,
+      limit: query.limit || 10,
+    };
   }
 
   @Get(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取评论详情（管理员）' })
   @ApiParam({ name: 'id', description: '评论ID' })
   @ApiResponse({ status: 200, description: '获取评论详情成功' })
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseInterface<any>> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<any> {
     const comment = await this.commentService.findById(id);
-    return ResponseUtil.success(comment, '获取评论详情成功');
+    return comment;
   }
 
   @Put(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '更新评论（管理员）' })
   @ApiParam({ name: 'id', description: '评论ID' })
   @ApiResponse({ status: 200, description: '评论更新成功' })
@@ -149,7 +160,7 @@ export class AdminCommentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCommentDto: AdminUpdateCommentDto,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const comment = await this.commentService.update(
       id,
       updateCommentDto,
@@ -157,10 +168,11 @@ export class AdminCommentController {
       true, // 管理员权限
     );
 
-    return ResponseUtil.success(comment, '评论更新成功');
+    return comment;
   }
 
   @Put(':id/hide')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '隐藏评论' })
   @ApiParam({ name: 'id', description: '评论ID' })
   @ApiResponse({ status: 200, description: '评论隐藏成功' })
@@ -168,49 +180,51 @@ export class AdminCommentController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
     @Body('adminNote') adminNote?: string,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const comment = await this.commentService.update(
       id,
       {
-        status: 'hidden',
+        status: CommentStatus.HIDDEN,
         adminNote: adminNote || '管理员隐藏',
       },
       user.id,
       true,
     );
 
-    return ResponseUtil.success(comment, '评论隐藏成功');
+    return comment;
   }
 
   @Put(':id/show')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '显示评论' })
   @ApiParam({ name: 'id', description: '评论ID' })
   @ApiResponse({ status: 200, description: '评论显示成功' })
   async showComment(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const comment = await this.commentService.update(
       id,
       {
-        status: 'active',
+        status: CommentStatus.ACTIVE,
         adminNote: '管理员恢复显示',
       },
       user.id,
       true,
     );
 
-    return ResponseUtil.success(comment, '评论显示成功');
+    return comment;
   }
 
   @Put(':id/top')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '置顶评论' })
   @ApiParam({ name: 'id', description: '评论ID' })
   @ApiResponse({ status: 200, description: '评论置顶成功' })
   async topComment(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const comment = await this.commentService.update(
       id,
       {
@@ -221,17 +235,18 @@ export class AdminCommentController {
       true,
     );
 
-    return ResponseUtil.success(comment, '评论置顶成功');
+    return comment;
   }
 
   @Put(':id/untop')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '取消置顶评论' })
   @ApiParam({ name: 'id', description: '评论ID' })
   @ApiResponse({ status: 200, description: '取消置顶成功' })
   async untopComment(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const comment = await this.commentService.update(
       id,
       {
@@ -242,10 +257,11 @@ export class AdminCommentController {
       true,
     );
 
-    return ResponseUtil.success(comment, '取消置顶成功');
+    return comment;
   }
 
   @Delete(':id')
+  @UseAdminVisibility()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除评论（管理员）' })
   @ApiParam({ name: 'id', description: '评论ID' })
@@ -253,25 +269,26 @@ export class AdminCommentController {
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<null>> {
+  ): Promise<null> {
     await this.commentService.remove(id, user.id, true);
-    return ResponseUtil.noContent('评论删除成功');
+    return null;
   }
 
   @Post('batch-hide')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '批量隐藏评论' })
   @ApiResponse({ status: 200, description: '批量隐藏成功' })
   async batchHide(
     @Body('commentIds') commentIds: string[],
     @Body('adminNote') adminNote: string,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const results = await Promise.all(
       commentIds.map((id) =>
         this.commentService.update(
           id,
           {
-            status: 'hidden',
+            status: CommentStatus.HIDDEN,
             adminNote: adminNote || '批量隐藏',
           },
           user.id,
@@ -280,26 +297,21 @@ export class AdminCommentController {
       ),
     );
 
-    return ResponseUtil.success(
-      { count: results.length },
-      `成功隐藏 ${results.length} 条评论`,
-    );
+    return results;
   }
 
   @Post('batch-delete')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '批量删除评论' })
   @ApiResponse({ status: 200, description: '批量删除成功' })
   async batchDelete(
     @Body('commentIds') commentIds: string[],
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
-    await Promise.all(
+  ): Promise<any> {
+    const results = await Promise.all(
       commentIds.map((id) => this.commentService.remove(id, user.id, true)),
     );
 
-    return ResponseUtil.success(
-      { count: commentIds.length },
-      `成功删除 ${commentIds.length} 条评论`,
-    );
+    return { message: '批量删除成功', count: results.length };
   }
 }

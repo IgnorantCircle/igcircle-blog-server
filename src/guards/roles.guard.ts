@@ -1,13 +1,10 @@
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '@/decorators/roles.decorator';
 import { Role } from '@/enums/role.enum';
 import { User } from '@/entities/user.entity';
+import { ForbiddenException } from '@/common/exceptions/business.exception';
+import { ErrorCode } from '@/common/constants/error-codes';
 
 // 定义带有 user 属性的请求接口
 interface RequestWithUser extends Request {
@@ -31,7 +28,7 @@ export class RolesGuard implements CanActivate {
     const { user } = request;
 
     if (!user) {
-      throw new ForbiddenException('用户信息缺失');
+      throw new ForbiddenException(ErrorCode.AUTH_USER_INFO_MISSING);
     }
 
     // 修复类型不匹配问题，将 user.role 转换为 Role 枚举进行比较
@@ -40,7 +37,7 @@ export class RolesGuard implements CanActivate {
     );
 
     if (!hasRole) {
-      throw new ForbiddenException('权限不足，需要管理员权限');
+      throw new ForbiddenException(ErrorCode.AUTH_PERMISSION_DENIED);
     }
 
     return true;

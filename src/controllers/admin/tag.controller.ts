@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,7 +17,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '@/guards/auth.guard';
+
 import { RolesGuard } from '@/guards/roles.guard';
 import { Roles } from '@/decorators/roles.decorator';
 import { Role } from '@/enums/role.enum';
@@ -29,110 +30,98 @@ import {
   PopularTagsDto,
 } from '@/dto/tag.dto';
 import { Tag } from '@/entities/tag.entity';
-import { ResponseUtil } from '@/common/utils/response.util';
 import {
-  ApiResponse as ApiResponseInterface,
-  PaginatedResponse,
-} from '@/common/interfaces/response.interface';
+  FieldVisibilityInterceptor,
+  UseAdminVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
 
 @ApiTags('管理端API - 标签管理')
 @Controller('admin/tags')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @Roles(Role.ADMIN)
 @ApiBearerAuth('JWT-auth')
+@UseInterceptors(FieldVisibilityInterceptor)
 export class AdminTagController {
   constructor(private readonly tagService: TagService) {}
 
   @Post()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '创建标签' })
-  @ApiResponse({ status: 201, description: '标签创建成功' })
-  async create(
-    @Body() createTagDto: CreateTagDto,
-  ): Promise<ApiResponseInterface<Tag>> {
+  @ApiResponse({ status: 201, description: '标签创建成功', type: Tag })
+  async create(@Body() createTagDto: CreateTagDto): Promise<Tag> {
     const tag = await this.tagService.create(createTagDto);
-    return ResponseUtil.success(tag, '标签创建成功');
+    return tag;
   }
 
   @Get()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取标签列表' })
   @ApiResponse({ status: 200, description: '获取成功', type: [Tag] })
-  async findAll(
-    @Query() query: TagQueryDto,
-  ): Promise<ApiResponseInterface<PaginatedResponse<Tag>>> {
-    const result = await this.tagService.findAll(query);
-    return ResponseUtil.paginated(
-      result.items,
-      result.total,
-      result.page,
-      result.limit,
-      '获取标签列表成功',
-    );
+  async findAll(@Query() query: TagQueryDto): Promise<any> {
+    return await this.tagService.findAllPaginated(query);
   }
 
   @Get('popular')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取热门标签' })
-  @ApiResponse({ status: 200, description: '获取成功', type: [Tag] })
-  async getPopular(
-    @Query() query: PopularTagsDto,
-  ): Promise<ApiResponseInterface<Tag[]>> {
+  @ApiResponse({ status: 200, description: '获取热门标签成功' })
+  async getPopularTags(@Query() query: PopularTagsDto): Promise<Tag[]> {
     const tags = await this.tagService.getPopular(query);
-    return ResponseUtil.success(tags, '获取热门标签成功');
+    return tags;
   }
 
   @Get('cloud')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取标签云' })
   @ApiResponse({ status: 200, description: '获取标签云成功' })
-  async getTagCloud(): Promise<ApiResponseInterface<any[]>> {
+  async getTagCloud(): Promise<any[]> {
     const cloud = await this.tagService.getTagCloud();
-    return ResponseUtil.success(cloud, '获取标签云成功');
+    return cloud;
   }
 
   @Get('stats')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取标签统计信息' })
   @ApiResponse({ status: 200, description: '获取标签统计信息成功' })
-  async getStats(): Promise<ApiResponseInterface<TagStatsDto[]>> {
+  async getStats(): Promise<TagStatsDto[]> {
     const stats = await this.tagService.getStats();
-    return ResponseUtil.success(stats, '获取标签统计信息成功');
+    return stats;
   }
 
   @Get(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '根据ID获取标签' })
   @ApiResponse({ status: 200, description: '获取标签成功' })
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseInterface<Tag>> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<Tag> {
     const tag = await this.tagService.findById(id);
-    return ResponseUtil.success(tag, '获取标签成功');
+    return tag;
   }
 
   @Get('slug/:slug')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '根据slug获取标签' })
   @ApiResponse({ status: 200, description: '获取标签成功' })
-  async findBySlug(
-    @Param('slug') slug: string,
-  ): Promise<ApiResponseInterface<Tag>> {
+  async findBySlug(@Param('slug') slug: string): Promise<Tag> {
     const tag = await this.tagService.findBySlug(slug);
-    return ResponseUtil.success(tag, '获取标签成功');
+    return tag;
   }
 
   @Patch(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '更新标签' })
   @ApiResponse({ status: 200, description: '标签更新成功' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateTagDto: UpdateTagDto,
-  ): Promise<ApiResponseInterface<Tag>> {
+  ): Promise<Tag> {
     const tag = await this.tagService.update(id, updateTagDto);
-    return ResponseUtil.success(tag, '标签更新成功');
+    return tag;
   }
 
   @Delete(':id')
   @ApiOperation({ summary: '删除标签' })
   @ApiResponse({ status: 200, description: '标签删除成功' })
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<ApiResponseInterface<null>> {
+  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     await this.tagService.remove(id);
-    return ResponseUtil.success(null, '标签删除成功');
   }
 }

@@ -11,7 +11,6 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
-import { Article } from './article.entity';
 
 @Entity('comments')
 export class Comment {
@@ -58,9 +57,9 @@ export class Comment {
   @Column()
   articleId: string;
 
-  @ManyToOne(() => Article, { onDelete: 'CASCADE' })
+  @ManyToOne('Article', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'articleId' })
-  article: Article;
+  article: any;
 
   // 用户关联
   @Column()

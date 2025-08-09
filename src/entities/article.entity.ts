@@ -13,9 +13,6 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
-import { Category } from './category.entity';
-import { Tag } from './tag.entity';
-import { Comment } from './comment.entity';
 
 @Entity('articles')
 export class Article {
@@ -38,13 +35,13 @@ export class Article {
   @Column({ type: 'text', nullable: true })
   coverImage: string;
 
-  @ManyToMany(() => Tag, (tag) => tag.articles, { cascade: true })
+  @ManyToMany('Tag', 'articles', { cascade: true })
   @JoinTable({
     name: 'article_tags',
     joinColumn: { name: 'articleId', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'tagId', referencedColumnName: 'id' },
   })
-  tags: Tag[];
+  tags: any[];
 
   @Column({
     type: 'enum',
@@ -107,9 +104,11 @@ export class Article {
   @Column({ type: 'varchar', nullable: true })
   categoryId: string;
 
-  @ManyToOne(() => Category, (category) => category.articles, { eager: true })
+  @ManyToOne('Category', 'articles', {
+    eager: true,
+  })
   @JoinColumn({ name: 'categoryId' })
-  category: Category;
+  category: any;
 
   @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;
@@ -128,6 +127,6 @@ export class Article {
   author: User;
 
   // 评论关联
-  @OneToMany(() => Comment, (comment) => comment.article)
-  comments: Comment[];
+  @OneToMany('Comment', 'article')
+  comments: any[];
 }

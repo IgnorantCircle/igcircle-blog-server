@@ -4,17 +4,17 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
-  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ErrorResponse } from '@/common/interfaces/response.interface';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 
 /**
  * 全局HTTP异常过滤器
  */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(HttpExceptionFilter.name);
+  constructor(private readonly logger: StructuredLoggerService) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -62,7 +62,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(
         `Internal Server Error: ${exception.message}`,
         exception.stack,
-        `${request.method} ${request.url}`,
+        {
+          method: request.method,
+          url: request.url,
+          metadata: { errorType: 'InternalServerError' },
+        },
       );
     } else {
       // 处理未知错误
@@ -73,7 +77,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(
         `Unknown Error: ${JSON.stringify(exception)}`,
         undefined,
-        `${request.method} ${request.url}`,
+        {
+          method: request.method,
+          url: request.url,
+          metadata: { errorType: 'UnknownError' },
+        },
       );
     }
 
@@ -96,11 +104,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(
         `${status} ${message}`,
         exception instanceof Error ? exception.stack : undefined,
-        `${request.method} ${request.url}`,
+        {
+          method: request.method,
+          url: request.url,
+          statusCode: status,
+          metadata: { errorLevel: 'server' },
+        },
       );
     } else {
       this.logger.warn(
         `${status} ${message} - ${request.method} ${request.url}`,
+        {
+          method: request.method,
+          url: request.url,
+          statusCode: status,
+          metadata: { errorLevel: 'client' },
+        },
       );
     }
 

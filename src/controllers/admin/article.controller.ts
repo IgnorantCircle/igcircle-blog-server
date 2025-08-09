@@ -10,7 +10,6 @@ import {
   ParseUUIDPipe,
   UseGuards,
   UseInterceptors,
-  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,309 +18,288 @@ import {
   ApiParam,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { ArticleService } from '@/services/article.service';
-import { JwtAuthGuard } from '@/guards/auth.guard';
+import { ArticleService } from '@/services/article/article.service';
+
 import { RolesGuard } from '@/guards/roles.guard';
 import { Roles } from '@/decorators/roles.decorator';
 import { CurrentUser } from '@/decorators/user.decorator';
 import { Role } from '@/enums/role.enum';
-import { AdminArticleDto, AdminArticleDetailDto } from '@/dto/base/admin.dto';
+import {
+  UnifiedArticleDto,
+  UnifiedArticleDetailDto,
+} from '@/dto/base/unified-response.dto';
 import {
   CreateArticleDto,
   UpdateArticleDto,
   ArticleQueryDto,
+  ArticleStatus,
 } from '@/dto/article.dto';
 import { PublishArticleDto } from '@/dto/publish-article.dto';
-import { plainToClass } from 'class-transformer';
-interface CreateArticleWithAuthorDto extends CreateArticleDto {
-  authorId: string;
+import {
+  FieldVisibilityInterceptor,
+  UseAdminVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
+import { Article } from '@/entities/article.entity';
+import { PaginationUtil } from '@/common/utils/pagination.util';
+import { PaginatedResponse } from '@/common/interfaces/response.interface';
+
+interface CurrentUserType {
+  sub: string;
+  username: string;
+  email: string;
+  role: string;
 }
+
 @ApiTags('管理端API - 文章')
 @Controller('admin/articles')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @Roles(Role.ADMIN)
 @ApiBearerAuth('JWT-auth')
-@UseInterceptors(ClassSerializerInterceptor)
+@UseInterceptors(FieldVisibilityInterceptor)
 export class AdminArticleController {
   constructor(private readonly articleService: ArticleService) {}
 
   @Post()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '创建文章' })
   @ApiResponse({
     status: 201,
     description: '创建成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
   async create(
-    @Body() createArticleDto: CreateArticleWithAuthorDto,
-    @CurrentUser() user: { sub: string },
-  ) {
-    // 设置作者为当前用户
-    createArticleDto.authorId = user.sub;
-
-    const article = await this.articleService.create(createArticleDto);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    @Body() createArticleDto: CreateArticleDto,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<Article> {
+    const articleData = {
+      ...createArticleDto,
+      authorId: user.sub,
+    };
+    const article = await this.articleService.create(articleData);
+    return article;
   }
 
   @Get()
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取文章列表（包含所有状态）' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [AdminArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async findAll(@Query() query: ArticleQueryDto) {
+  async findAll(
+    @Query() query: ArticleQueryDto,
+  ): Promise<PaginatedResponse<Article>> {
     const queryDto = new ArticleQueryDto();
     Object.assign(queryDto, query);
-    const result = await this.articleService.findAll(queryDto);
-
-    const page = Number(queryDto.page) || 1;
-    const limit = Number(queryDto.limit) || 10;
-    return {
-      items: result.articles.map((article) =>
-        plainToClass(AdminArticleDto, article, {
-          excludeExtraneousValues: true,
-        }),
-      ),
-      total: result.total,
-      page,
-      limit,
-      totalPages: Math.ceil(result.total / limit),
-      hasNext: page < Math.ceil(result.total / limit),
-      hasPrev: page > 1,
-    };
+    const result = await this.articleService.findAllPaginated(queryDto);
+    return PaginationUtil.fromQueryResult(
+      result,
+      queryDto.page || 1,
+      queryDto.limit || 10,
+    );
   }
 
   @Get('drafts')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取草稿文章' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [AdminArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async findDrafts(@Query() query: ArticleQueryDto) {
+  async findDrafts(
+    @Query() query: ArticleQueryDto,
+  ): Promise<PaginatedResponse<Article>> {
     const draftQuery = new ArticleQueryDto();
-    Object.assign(draftQuery, query);
-    draftQuery.status = 'draft';
-    const result = await this.articleService.findAll(draftQuery);
-
-    const page = Number(draftQuery.page) || 1;
-    const limit = Number(draftQuery.limit) || 10;
-    return {
-      items: result.articles.map((article) =>
-        plainToClass(AdminArticleDto, article, {
-          excludeExtraneousValues: true,
-        }),
-      ),
-      total: result.total,
-      page,
-      limit,
-      totalPages: Math.ceil(result.total / limit),
-      hasNext: page < Math.ceil(result.total / limit),
-      hasPrev: page > 1,
-    };
+    Object.assign(draftQuery, query, { status: ArticleStatus.DRAFT });
+    const result = await this.articleService.findAllPaginated(draftQuery);
+    return PaginationUtil.fromQueryResult(
+      result,
+      draftQuery.page || 1,
+      draftQuery.limit || 10,
+    );
   }
 
   @Get('published')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取已发布文章' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [AdminArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async findPublished(@Query() query: ArticleQueryDto) {
+  async findPublished(
+    @Query() query: ArticleQueryDto,
+  ): Promise<PaginatedResponse<Article>> {
     const publishedQuery = new ArticleQueryDto();
-    Object.assign(publishedQuery, query);
-    publishedQuery.status = 'published';
-    const result = await this.articleService.findAll(publishedQuery);
-
-    const page = Number(publishedQuery.page) || 1;
-    const limit = Number(publishedQuery.limit) || 10;
-    return {
-      items: result.articles.map((article) =>
-        plainToClass(AdminArticleDto, article, {
-          excludeExtraneousValues: true,
-        }),
-      ),
-      total: result.total,
-      page,
-      limit,
-      totalPages: Math.ceil(result.total / limit),
-      hasNext: page < Math.ceil(result.total / limit),
-      hasPrev: page > 1,
-    };
+    Object.assign(publishedQuery, query, { status: ArticleStatus.PUBLISHED });
+    const result = await this.articleService.findAllPaginated(publishedQuery);
+    return PaginationUtil.fromQueryResult(
+      result,
+      publishedQuery.page || 1,
+      publishedQuery.limit || 10,
+    );
   }
 
   @Get('archived')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '获取归档文章' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [AdminArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async findArchived(@Query() query: ArticleQueryDto) {
+  async findArchived(
+    @Query() query: ArticleQueryDto,
+  ): Promise<PaginatedResponse<Article>> {
     const archivedQuery = new ArticleQueryDto();
-    Object.assign(archivedQuery, query);
-    archivedQuery.status = 'archived';
-    const result = await this.articleService.findAll(archivedQuery);
-
-    const page = Number(archivedQuery.page) || 1;
-    const limit = Number(archivedQuery.limit) || 10;
-    return {
-      items: result.articles.map((article) =>
-        plainToClass(AdminArticleDto, article, {
-          excludeExtraneousValues: true,
-        }),
-      ),
-      total: result.total,
-      page,
-      limit,
-      totalPages: Math.ceil(result.total / limit),
-      hasNext: page < Math.ceil(result.total / limit),
-      hasPrev: page > 1,
-    };
+    Object.assign(archivedQuery, query, { status: ArticleStatus.ARCHIVED });
+    const result = await this.articleService.findAllPaginated(archivedQuery);
+    return PaginationUtil.fromQueryResult(
+      result,
+      archivedQuery.page || 1,
+      archivedQuery.limit || 10,
+    );
   }
 
   @Get('stats')
   @ApiOperation({ summary: '获取文章统计信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
   async getStatistics(): Promise<Record<string, number>> {
-    return await this.articleService.getStatistics();
+    const stats = await this.articleService.getStatistics();
+    return stats;
   }
 
   @Get(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '根据ID获取文章详情（包含所有字段）' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async findById(@Param('id', ParseUUIDPipe) id: string) {
+  async findById(@Param('id', ParseUUIDPipe) id: string): Promise<Article> {
     const article = await this.articleService.findById(id);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Put(':id')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '更新文章' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '更新成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateArticleDto: UpdateArticleDto,
-  ) {
+  ): Promise<Article> {
     const article = await this.articleService.update(id, updateArticleDto);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Put(':id/publish')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '发布文章' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '发布成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
   async publish(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() publishDto: PublishArticleDto,
-  ) {
+  ): Promise<Article> {
     const article = await this.articleService.publish(id, publishDto);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Put(':id/unpublish')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '取消发布文章' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '取消发布成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async unpublish(@Param('id', ParseUUIDPipe) id: string) {
+  async unpublish(@Param('id', ParseUUIDPipe) id: string): Promise<Article> {
     const article = await this.articleService.unpublish(id);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Put(':id/archive')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '归档文章' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '归档成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async archive(@Param('id', ParseUUIDPipe) id: string) {
+  async archive(@Param('id', ParseUUIDPipe) id: string): Promise<Article> {
     const article = await this.articleService.archive(id);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Put(':id/feature')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '设置/取消精选文章' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '操作成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async toggleFeature(@Param('id', ParseUUIDPipe) id: string) {
+  async toggleFeature(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Article> {
     const article = await this.articleService.toggleFeature(id);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Put(':id/top')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '设置/取消置顶文章' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '操作成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async toggleTop(@Param('id', ParseUUIDPipe) id: string) {
+  async toggleTop(@Param('id', ParseUUIDPipe) id: string): Promise<Article> {
     const article = await this.articleService.toggleTop(id);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Put(':id/visible')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '设置/取消文章可见性' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '操作成功',
-    type: AdminArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async toggleVisible(@Param('id', ParseUUIDPipe) id: string) {
+  async toggleVisible(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Article> {
     const article = await this.articleService.toggleVisible(id);
-    return plainToClass(AdminArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Delete(':id')
   @ApiOperation({ summary: '删除文章' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({ status: 200, description: '删除成功' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ message: string }> {
     await this.articleService.remove(id);
     return { message: '文章删除成功' };
   }
@@ -329,7 +307,7 @@ export class AdminArticleController {
   @Delete('batch')
   @ApiOperation({ summary: '批量删除文章' })
   @ApiResponse({ status: 200, description: '批量删除成功' })
-  async batchRemove(@Body('ids') ids: string[]) {
+  async batchRemove(@Body('ids') ids: string[]): Promise<{ message: string }> {
     await this.articleService.batchRemove(ids);
     return { message: `成功删除 ${ids.length} 篇文章` };
   }

@@ -13,6 +13,7 @@ import {
   IsNotEmpty,
   Matches,
 } from 'class-validator';
+import { ValidationException } from '../exceptions/business.exception';
 
 enum Environment {
   Development = 'development',
@@ -328,20 +329,30 @@ export function validateConfig(
     API_PREFIX: config.API_PREFIX,
     API_VERSION: config.API_VERSION,
     UPLOAD_PATH: config.UPLOAD_PATH,
-    MAX_FILE_SIZE: config.MAX_FILE_SIZE,
-    DEFAULT_PAGE_SIZE: config.DEFAULT_PAGE_SIZE,
-    MAX_PAGE_SIZE: config.MAX_PAGE_SIZE,
+    MAX_FILE_SIZE: config.MAX_FILE_SIZE
+      ? parseInt(config.MAX_FILE_SIZE as string, 10)
+      : 10485760,
+    DEFAULT_PAGE_SIZE: config.DEFAULT_PAGE_SIZE
+      ? parseInt(config.DEFAULT_PAGE_SIZE as string, 10)
+      : 10,
+    MAX_PAGE_SIZE: config.MAX_PAGE_SIZE
+      ? parseInt(config.MAX_PAGE_SIZE as string, 10)
+      : 100,
     database: {
       type: config.DB_TYPE || 'mysql',
       host: config.DB_HOST || 'localhost',
-      port: config.DB_PORT || 3306,
-      username: config.DB_USERNAME || 'root',
-      password: config.DB_PASSWORD || '',
-      database: config.DB_DATABASE || 'blog',
-      synchronize: config.DB_SYNCHRONIZE || false,
-      logging: config.DB_LOGGING || false,
-      maxConnections: config.DB_MAX_CONNECTIONS || 10,
-      connectionTimeout: config.DB_CONNECTION_TIMEOUT || 30000,
+      port: config.DB_PORT ? parseInt(config.DB_PORT as string, 10) : 3306,
+      username: config.DB_USER || 'root',
+      password: config.DB_PASS || '',
+      database: config.DB_NAME || 'blog',
+      synchronize: config.DB_SYNCHRONIZE === 'true',
+      logging: config.DB_LOGGING === 'true',
+      maxConnections: config.DB_MAX_CONNECTIONS
+        ? parseInt(config.DB_MAX_CONNECTIONS as string, 10)
+        : 10,
+      acquireTimeout: config.DB_CONNECTION_TIMEOUT
+        ? parseInt(config.DB_CONNECTION_TIMEOUT as string, 10)
+        : 60000,
     },
     redis: {
       host: config.REDIS_HOST || 'localhost',
@@ -414,7 +425,7 @@ export function validateConfig(
       })
       .join('; ');
 
-    throw new Error(`配置验证失败: ${errorMessages}`);
+    throw new ValidationException(`配置验证失败: ${errorMessages}`);
   }
 
   return validatedConfig;

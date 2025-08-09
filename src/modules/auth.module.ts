@@ -1,27 +1,15 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { AuthController } from '../controllers/auth.controller';
-import { UserModule } from './user.module';
-import { JwtAuthGuard } from '../guards/auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
+import { AuthController } from '@/controllers/auth.controller';
+import { RsaController } from '@/controllers/rsa.controller';
+import { RsaService } from '@/services/rsa.service';
+import { EmailService } from '@/services/email.service';
+
+import { SharedAuthModule } from './shared-auth.module';
 
 @Module({
-  imports: [
-    UserModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '7d'),
-        },
-      }),
-      inject: [ConfigService],
-    }),
-  ],
-  controllers: [AuthController],
-  providers: [JwtAuthGuard, RolesGuard],
-  exports: [JwtModule, JwtAuthGuard, RolesGuard],
+  imports: [SharedAuthModule],
+  controllers: [AuthController, RsaController],
+  providers: [RsaService, EmailService],
+  exports: [SharedAuthModule, RsaService],
 })
 export class AuthModule {}

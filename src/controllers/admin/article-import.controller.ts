@@ -17,12 +17,12 @@ import {
   ApiBearerAuth,
   ApiBody,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '@/guards/auth.guard';
+
 import { RolesGuard } from '@/guards/roles.guard';
 import { Roles } from '@/decorators/roles.decorator';
 import { CurrentUser } from '@/decorators/user.decorator';
 import { Role } from '@/enums/role.enum';
-import { ArticleImportService } from '@/services/article-import.service';
+import { ArticleImportService } from '@/services/article-import/article-import.service';
 import {
   ArticleImportConfigDto,
   ArticleImportResponseDto,
@@ -35,7 +35,13 @@ import {
   NotFoundException,
 } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
+
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
+import {
+  FieldVisibilityInterceptor,
+  UseAdminVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
+import { ArticleParserService } from '@/services/article-import/article-parser.service';
 
 /**
  * 文章导入配置原始数据接口
@@ -74,11 +80,15 @@ interface FileValidationResponse {
 
 @ApiTags('管理端 - 文章导入')
 @Controller('admin/articles/import')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(RolesGuard)
 @Roles(Role.ADMIN)
 @ApiBearerAuth()
+@UseInterceptors(FieldVisibilityInterceptor)
 export class ArticleImportController {
-  constructor(private readonly articleImportService: ArticleImportService) {}
+  constructor(
+    private readonly articleImportService: ArticleImportService,
+    private readonly articleParserService: ArticleParserService,
+  ) {}
 
   /**
    * 文件上传配置
@@ -197,7 +207,7 @@ export class ArticleImportController {
   )
   async importArticles(
     @UploadedFiles() files: Express.Multer.File[],
-    @Body() configData: RawImportConfigData,
+    @Body() configData: any,
     @CurrentUser() user: User,
   ): Promise<ArticleImportResponseDto> {
     // 验证文件和解析配置
@@ -228,7 +238,7 @@ export class ArticleImportController {
   )
   async importArticlesAsync(
     @UploadedFiles() files: Express.Multer.File[],
-    @Body() configData: RawImportConfigData,
+    @Body() configData: any,
     @CurrentUser() user: User,
   ): Promise<StartImportResponseDto> {
     // 验证文件和解析配置
@@ -267,6 +277,7 @@ export class ArticleImportController {
   }
 
   @Post('validate')
+  @UseAdminVisibility()
   @ApiOperation({ summary: '验证文章文件' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -326,7 +337,7 @@ export class ArticleImportController {
     const results = files.map((file): FileValidationResultItem => {
       try {
         const content = file.buffer.toString('utf-8');
-        const validation = this.articleImportService['validateAndParseFile'](
+        const validation = this.articleParserService.validateAndParseFile(
           content,
           file.originalname,
         );
@@ -354,12 +365,13 @@ export class ArticleImportController {
     const validFiles = results.filter((r) => r.isValid).length;
     const invalidFiles = results.filter((r) => !r.isValid).length;
 
-    return {
+    const result = {
       totalFiles: files.length,
       validFiles,
       invalidFiles,
       results,
     };
+    return result;
   }
 
   /**
@@ -367,7 +379,7 @@ export class ArticleImportController {
    */
   private validateFilesAndParseConfig(
     files: Express.Multer.File[],
-    configData: RawImportConfigData,
+    configData: any,
     action: string,
   ): ArticleImportConfigDto {
     // 验证文件

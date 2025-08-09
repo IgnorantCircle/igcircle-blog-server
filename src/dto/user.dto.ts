@@ -2,72 +2,168 @@ import {
   IsString,
   IsEmail,
   IsOptional,
+  IsEnum,
+  IsBoolean,
   MinLength,
   MaxLength,
-  IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PaginationSortDto } from '../common/dto/pagination.dto';
+import { Type } from 'class-transformer';
+import { BaseCreateDto, BaseUpdateDto, BaseQueryDto } from './base/base.dto';
 
-export class CreateUserDto {
-  @ApiProperty({ description: '用户名', minLength: 3, maxLength: 50 })
+import {
+  VALIDATION_LIMITS,
+  VALIDATION_MESSAGES,
+} from '@/common/constants/validation.constants';
+
+/**
+ * 用户状态枚举
+ */
+export enum UserStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  BANNED = 'banned',
+}
+
+/**
+ * 用户角色枚举
+ */
+export enum UserRole {
+  USER = 'user',
+  ADMIN = 'admin',
+  MODERATOR = 'moderator',
+}
+
+export class CreateUserDto extends BaseCreateDto {
+  @ApiProperty({
+    description: '用户名',
+    minLength: VALIDATION_LIMITS.USERNAME.MIN,
+    maxLength: VALIDATION_LIMITS.USERNAME.MAX,
+  })
   @IsString()
-  @MinLength(3, { message: '用户名至少3个字符' })
-  @MaxLength(20, { message: '用户名最多20个字符' })
+  @MinLength(VALIDATION_LIMITS.USERNAME.MIN, {
+    message: VALIDATION_MESSAGES.MIN_LENGTH(
+      '用户名',
+      VALIDATION_LIMITS.USERNAME.MIN,
+    ),
+  })
+  @MaxLength(VALIDATION_LIMITS.USERNAME.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '用户名',
+      VALIDATION_LIMITS.USERNAME.MAX,
+    ),
+  })
   username: string;
 
-  @ApiProperty({ description: '邮箱地址' })
-  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  @ApiProperty({
+    description: '邮箱',
+  })
+  @IsEmail(
+    {},
+    {
+      message: VALIDATION_MESSAGES.INVALID_EMAIL,
+    },
+  )
   email: string;
 
-  @ApiProperty({ description: '密码', minLength: 6, maxLength: 255 })
+  @ApiProperty({
+    description: '密码',
+    minLength: VALIDATION_LIMITS.PASSWORD.MIN,
+    maxLength: VALIDATION_LIMITS.PASSWORD.MAX,
+  })
   @IsString()
-  @MinLength(6, { message: '密码至少6个字符' })
-  @MaxLength(255, { message: '密码最多255个字符' })
+  @MinLength(VALIDATION_LIMITS.PASSWORD.MIN, {
+    message: VALIDATION_MESSAGES.MIN_LENGTH(
+      '密码',
+      VALIDATION_LIMITS.PASSWORD.MIN,
+    ),
+  })
+  @MaxLength(VALIDATION_LIMITS.PASSWORD.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '密码',
+      VALIDATION_LIMITS.PASSWORD.MAX,
+    ),
+  })
   password: string;
 
-  @ApiPropertyOptional({ description: '昵称', maxLength: 50 })
+  @ApiPropertyOptional({
+    description: '昵称',
+    maxLength: VALIDATION_LIMITS.NICKNAME.MAX,
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(50, { message: '昵称最多50个字符' })
+  @MaxLength(VALIDATION_LIMITS.NICKNAME.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '昵称',
+      VALIDATION_LIMITS.NICKNAME.MAX,
+    ),
+  })
   nickname?: string;
 }
 
-export class UpdateUserDto {
-  @ApiPropertyOptional({ description: '昵称', maxLength: 50 })
+export class UpdateUserDto extends BaseUpdateDto {
+  @ApiPropertyOptional({
+    description: '昵称',
+    maxLength: VALIDATION_LIMITS.NICKNAME.MAX,
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(50, { message: '昵称最多50个字符' })
+  @MaxLength(VALIDATION_LIMITS.NICKNAME.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '昵称',
+      VALIDATION_LIMITS.NICKNAME.MAX,
+    ),
+  })
   nickname?: string;
 
-  @ApiPropertyOptional({ description: '个人简介', maxLength: 500 })
+  @ApiPropertyOptional({
+    description: '个人简介',
+    maxLength: VALIDATION_LIMITS.BIO.MAX,
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(500, { message: '个人简介最多500个字符' })
+  @MaxLength(VALIDATION_LIMITS.BIO.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '个人简介',
+      VALIDATION_LIMITS.BIO.MAX,
+    ),
+  })
   bio?: string;
 
-  @ApiPropertyOptional({ description: '头像URL' })
+  @ApiPropertyOptional({
+    description: '头像URL',
+  })
   @IsOptional()
   @IsString()
   avatar?: string;
 }
 
-export class UserQueryDto extends PaginationSortDto {
+export class UserQueryDto extends BaseQueryDto {
   @ApiPropertyOptional({
     description: '用户状态',
-    enum: ['active', 'inactive', 'banned'],
+    enum: UserStatus,
   })
   @IsOptional()
-  @IsEnum(['active', 'inactive', 'banned'])
-  status?: string;
+  @IsEnum(UserStatus, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('用户状态'),
+  })
+  status?: UserStatus;
 
-  @ApiPropertyOptional({ description: '用户角色', enum: ['user', 'admin'] })
+  @ApiPropertyOptional({
+    description: '用户角色',
+    enum: UserRole,
+  })
   @IsOptional()
-  @IsEnum(['user', 'admin'])
-  role?: string;
+  @IsEnum(UserRole, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('用户角色'),
+  })
+  role?: UserRole;
 
-  @ApiPropertyOptional({ description: '搜索关键词' })
+  @ApiPropertyOptional({
+    description: '邮箱是否验证',
+  })
   @IsOptional()
-  @IsString()
-  keyword?: string;
+  @IsBoolean()
+  @Type(() => Boolean)
+  emailVerified?: boolean;
 }

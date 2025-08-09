@@ -6,7 +6,8 @@ import {
   IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type, Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
+import { Article } from '@/entities/article.entity';
 
 /**
  * 文章导入配置DTO
@@ -36,7 +37,7 @@ export class ArticleImportConfigDto {
   })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
+  @Type(() => Boolean)
   autoPublish?: boolean;
 
   @ApiPropertyOptional({
@@ -45,7 +46,7 @@ export class ArticleImportConfigDto {
   })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
+  @Type(() => Boolean)
   overwriteExisting?: boolean;
 
   @ApiPropertyOptional({
@@ -63,7 +64,7 @@ export class ArticleImportConfigDto {
   })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
+  @Type(() => Boolean)
   skipInvalidFiles?: boolean;
 }
 
@@ -75,6 +76,7 @@ export class ArticleImportResultDto {
   filePath: string;
 
   @ApiProperty({ description: '是否成功' })
+  @Type(() => Boolean)
   success: boolean;
 
   @ApiPropertyOptional({ description: '是否跳过' })
@@ -127,28 +129,34 @@ export class ArticleImportResponseDto {
 }
 
 /**
- * 解析的文章数据
+ * 解析的文章数据 - 基于Article实体
  */
-export interface ParsedArticleData {
-  title: string;
-  content: string;
-  summary?: string;
-  slug?: string;
-  tags?: string[];
-  category?: string;
-  coverImage?: string;
-  publishedAt?: Date;
-  createdAt?: Date;
-  updatedAt?: Date;
-  status?: 'draft' | 'published' | 'archived';
-  isFeatured?: boolean;
-  isTop?: boolean;
-  allowComment?: boolean;
-  metaDescription?: string;
-  metaKeywords?: string[];
-  socialImage?: string;
-  readingTime?: number;
-  weight?: number;
+export interface ParsedArticleData
+  extends Partial<
+    Pick<
+      Article,
+      | 'title'
+      | 'summary'
+      | 'slug'
+      | 'coverImage'
+      | 'publishedAt'
+      | 'createdAt'
+      | 'updatedAt'
+      | 'status'
+      | 'isFeatured'
+      | 'isTop'
+      | 'allowComment'
+      | 'metaDescription'
+      | 'metaKeywords'
+      | 'socialImage'
+      | 'readingTime'
+      | 'weight'
+    >
+  > {
+  title: string; // 必填字段
+  content: string; // 必填字段
+  tags?: string[]; // 标签名称数组
+  category?: string; // 分类名称
 }
 
 /**

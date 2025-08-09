@@ -4,28 +4,22 @@ import { Type } from 'class-transformer';
 
 export class PublishArticleDto {
   @ApiPropertyOptional({
-    description: '发布时间（时间戳）',
+    description: '发布时间',
   })
   @IsOptional()
-  @Type(() => Number)
-  publishedAt?: number;
+  @Type(() => Date)
+  publishedAt?: Date;
 
-  @ApiPropertyOptional({
-    description: '是否置顶',
-    example: false,
-  })
+  @ApiPropertyOptional({ description: '是否置顶', default: false })
   @IsOptional()
+  @IsBoolean()
   @Type(() => Boolean)
-  @IsBoolean({ message: '是否置顶必须是布尔值' })
   isTop?: boolean;
 
-  @ApiPropertyOptional({
-    description: '是否精选',
-    example: false,
-  })
+  @ApiPropertyOptional({ description: '是否推荐', default: false })
   @IsOptional()
+  @IsBoolean()
   @Type(() => Boolean)
-  @IsBoolean({ message: '是否精选必须是布尔值' })
   isFeatured?: boolean;
 
   @ApiPropertyOptional({

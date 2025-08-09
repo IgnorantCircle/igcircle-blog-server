@@ -10,7 +10,6 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
 } from 'typeorm';
-import { Article } from './article.entity';
 
 @Entity('categories')
 export class Category {
@@ -40,6 +39,7 @@ export class Category {
   isActive: boolean;
 
   @Column({ type: 'varchar', nullable: true })
+  @Index({ where: 'parentId IS NOT NULL' })
   parentId: string;
 
   @ManyToOne(() => Category, (category) => category.children, {
@@ -51,8 +51,8 @@ export class Category {
   @OneToMany(() => Category, (category) => category.parent)
   children: Category[];
 
-  @OneToMany(() => Article, (article) => article.category)
-  articles: Article[];
+  @OneToMany('Article', 'category')
+  articles: any[];
 
   @Column({ type: 'int', default: 0 })
   articleCount: number; // 文章数量统计

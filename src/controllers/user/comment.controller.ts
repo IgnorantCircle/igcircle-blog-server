@@ -8,10 +8,10 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
-  UseGuards,
   Request,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,7 +21,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { CommentService } from '@/services/comment.service';
-import { JwtAuthGuard } from '@/guards/auth.guard';
+
 import { Public } from '@/decorators/public.decorator';
 import { CurrentUser } from '@/decorators/user.decorator';
 import { User } from '@/entities/user.entity';
@@ -30,10 +30,13 @@ import {
   UpdateCommentDto,
   CommentQueryDto,
 } from '@/dto/comment.dto';
-import { ResponseUtil } from '@/common/utils/response.util';
-import { ApiResponse as ApiResponseInterface } from '@/common/interfaces/response.interface';
 import { Comment } from '@/entities/comment.entity';
 import type { Request as ExpressRequest } from 'express';
+import {
+  FieldVisibilityInterceptor,
+  UsePublicVisibility,
+  UseUserVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
 // 扩展Comment类型以包含动态添加的isLiked属性
 type CommentWithLikeStatus = Comment & {
   isLiked?: boolean;
@@ -42,11 +45,12 @@ type CommentWithLikeStatus = Comment & {
 
 @ApiTags('用户评论')
 @Controller('user/comments')
+@UseInterceptors(FieldVisibilityInterceptor)
 export class UserCommentController {
   constructor(private readonly commentService: CommentService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseUserVisibility()
   @ApiBearerAuth()
   @ApiOperation({ summary: '创建评论' })
   @ApiResponse({ status: 201, description: '评论创建成功' })
@@ -54,29 +58,31 @@ export class UserCommentController {
     @Body() createCommentDto: CreateCommentDto,
     @CurrentUser() user: User,
     @Request() req: ExpressRequest,
-  ): Promise<ApiResponseInterface<any>> {
-    const ipAddress = req.ip || req.remoteAddress;
+  ): Promise<any> {
+    const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('User-Agent');
 
-    const comment = await this.commentService.create(
+    const comment = await this.commentService.createComment(
       createCommentDto,
       user.id,
       ipAddress,
       userAgent,
     );
 
-    return ResponseUtil.created(comment, '评论创建成功');
+    return comment;
   }
 
   @Get()
+  @UsePublicVisibility()
   @Public()
   @ApiOperation({ summary: '获取评论列表' })
   @ApiResponse({ status: 200, description: '获取评论列表成功' })
   async findAll(
     @Query() query: CommentQueryDto,
     @CurrentUser() user?: User,
-  ): Promise<ApiResponseInterface<any>> {
-    const { comments, total } = await this.commentService.findAll(query);
+  ): Promise<any> {
+    const { comments, total } =
+      await this.commentService.findAllComments(query);
 
     // 如果用户已登录，检查点赞状态
     if (user && comments.length > 0) {
@@ -92,16 +98,16 @@ export class UserCommentController {
       });
     }
 
-    return ResponseUtil.paginated(
-      comments,
-      total,
-      query.page || 1,
-      query.limit || 10,
-      '获取评论列表成功',
-    );
+    return {
+      items: comments,
+      total: total,
+      page: query.page || 1,
+      limit: query.limit || 10,
+    };
   }
 
   @Get('tree/:articleId')
+  @UsePublicVisibility()
   @Public()
   @ApiOperation({ summary: '获取文章评论树' })
   @ApiParam({ name: 'articleId', description: '文章ID' })
@@ -111,7 +117,7 @@ export class UserCommentController {
     @Query('page') page = 1,
     @Query('limit') limit = 10,
     @CurrentUser() user?: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const { comments, total } = await this.commentService.getCommentTree(
       articleId,
       page,
@@ -141,23 +147,23 @@ export class UserCommentController {
       (comments as CommentWithLikeStatus[]).forEach((comment) => {
         comment.isLiked = likeStatus[comment.id] || false;
         if (comment.replies) {
-          comment.replies.forEach((reply) => {
+          comment.replies.forEach((reply: CommentWithLikeStatus) => {
             reply.isLiked = likeStatus[reply.id] || false;
           });
         }
       });
     }
 
-    return ResponseUtil.paginated(
-      comments,
-      total,
-      page,
-      limit,
-      '获取评论树成功',
-    );
+    return {
+      items: comments,
+      total: total,
+      page: page,
+      limit: limit,
+    };
   }
 
   @Get(':id')
+  @UsePublicVisibility()
   @Public()
   @ApiOperation({ summary: '获取评论详情' })
   @ApiParam({ name: 'id', description: '评论ID' })
@@ -165,7 +171,7 @@ export class UserCommentController {
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user?: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const comment = await this.commentService.findById(id);
 
     // 如果用户已登录，检查点赞状态
@@ -174,10 +180,11 @@ export class UserCommentController {
       (comment as CommentWithLikeStatus).isLiked = isLiked;
     }
 
-    return ResponseUtil.success(comment, '获取评论详情成功');
+    return comment;
   }
 
   @Get(':id/replies')
+  @UsePublicVisibility()
   @Public()
   @ApiOperation({ summary: '获取评论回复列表' })
   @ApiParam({ name: 'id', description: '评论ID' })
@@ -186,11 +193,12 @@ export class UserCommentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: CommentQueryDto,
     @CurrentUser() user?: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const queryDto = new CommentQueryDto();
     Object.assign(queryDto, query);
     queryDto.parentId = id;
-    const { comments, total } = await this.commentService.findAll(queryDto);
+    const { comments, total } =
+      await this.commentService.findAllComments(queryDto);
 
     // 如果用户已登录，检查点赞状态
     if (user && comments.length > 0) {
@@ -205,17 +213,16 @@ export class UserCommentController {
       });
     }
 
-    return ResponseUtil.paginated(
-      comments,
-      total,
-      query.page || 1,
-      query.limit || 10,
-      '获取回复列表成功',
-    );
+    return {
+      items: comments,
+      total: total,
+      page: query.page || 1,
+      limit: query.limit || 10,
+    };
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseUserVisibility()
   @ApiBearerAuth()
   @ApiOperation({ summary: '更新评论' })
   @ApiParam({ name: 'id', description: '评论ID' })
@@ -224,7 +231,7 @@ export class UserCommentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCommentDto: UpdateCommentDto,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const comment = await this.commentService.update(
       id,
       updateCommentDto,
@@ -232,11 +239,11 @@ export class UserCommentController {
       false,
     );
 
-    return ResponseUtil.success(comment, '评论更新成功');
+    return comment;
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseUserVisibility()
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除评论' })
@@ -245,13 +252,13 @@ export class UserCommentController {
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<null>> {
+  ): Promise<null> {
     await this.commentService.remove(id, user.id, false);
-    return ResponseUtil.noContent('评论删除成功');
+    return null;
   }
 
   @Post(':id/like')
-  @UseGuards(JwtAuthGuard)
+  @UseUserVisibility()
   @ApiBearerAuth()
   @ApiOperation({ summary: '点赞/取消点赞评论' })
   @ApiParam({ name: 'id', description: '评论ID' })
@@ -259,33 +266,31 @@ export class UserCommentController {
   async toggleLike(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const result = await this.commentService.toggleLike(id, user.id);
-
-    const message = result.liked ? '点赞成功' : '取消点赞成功';
-    return ResponseUtil.success(result, message);
+    return result;
   }
 
   @Get('my/list')
-  @UseGuards(JwtAuthGuard)
+  @UseUserVisibility()
   @ApiBearerAuth()
   @ApiOperation({ summary: '获取我的评论列表' })
   @ApiResponse({ status: 200, description: '获取我的评论列表成功' })
   async getMyComments(
     @Query() query: CommentQueryDto,
     @CurrentUser() user: User,
-  ): Promise<ApiResponseInterface<any>> {
+  ): Promise<any> {
     const queryDto = new CommentQueryDto();
     Object.assign(queryDto, query);
-    queryDto.authorId = user.id;
-    const { comments, total } = await this.commentService.findAll(queryDto);
+    queryDto.userId = user.id;
+    const { comments, total } =
+      await this.commentService.findAllComments(queryDto);
 
-    return ResponseUtil.paginated(
-      comments,
-      total,
-      query.page || 1,
-      query.limit || 10,
-      '获取我的评论列表成功',
-    );
+    return {
+      items: comments,
+      total: total,
+      page: query.page || 1,
+      limit: query.limit || 10,
+    };
   }
 }

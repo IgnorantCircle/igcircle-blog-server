@@ -1,8 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
 import { Tag } from '@/entities/tag.entity';
 import {
   NotFoundException,
@@ -15,30 +13,32 @@ import {
   TagStatsDto,
   PopularTagsDto,
 } from '@/dto/tag.dto';
+import { ArticleStatus } from '@/dto/article.dto';
 import { PaginatedResponse } from '@/common/interfaces/response.interface';
 import { ErrorCode } from '@/common/constants/error-codes';
 import { BaseService } from '@/common/base/base.service';
-import { CacheStrategyService } from '@/common/cache/cache-strategy.service';
-import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { SlugUtil } from '@/common/utils/slug.util';
+import { CACHE_TYPES } from '@/common/cache/cache.config';
+import { CacheService } from '@/common/cache/cache.service';
 import { ConfigService } from '@nestjs/config';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { PaginationUtil } from '@/common/utils/pagination.util';
 
 @Injectable()
 export class TagService extends BaseService<Tag> {
   constructor(
     @InjectRepository(Tag)
     private readonly tagRepository: Repository<Tag>,
-    @Inject(CACHE_MANAGER)
-    private readonly cacheManager: Cache,
-    protected readonly cacheStrategy: CacheStrategyService,
-    protected readonly logger: StructuredLoggerService,
-    protected readonly configService: ConfigService,
+    @Inject(CacheService) cacheService: CacheService,
+    @Inject(ConfigService) configService: ConfigService,
+    @Inject(StructuredLoggerService) logger: StructuredLoggerService,
   ) {
-    super(tagRepository, cacheStrategy, 'tag', configService);
+    super(tagRepository, 'tag', cacheService, configService, logger);
     this.logger.setContext({ module: 'TagService' });
   }
 
   /**
-   * 创建标签（重写BaseService方法以处理slug生成和唯一性检查）
+   * 创建标签（重写BaseService方法以处理唯一性检查）
    */
   async create(createTagDto: CreateTagDto): Promise<Tag> {
     const { name, slug, ...tagData } = createTagDto;
@@ -52,7 +52,7 @@ export class TagService extends BaseService<Tag> {
     }
 
     // 生成slug
-    const finalSlug = slug || this.generateSlug(name);
+    const finalSlug = slug || SlugUtil.forTag(name || 'tag');
     const existingBySlug = await this.tagRepository.findOne({
       where: { slug: finalSlug },
     });
@@ -72,7 +72,7 @@ export class TagService extends BaseService<Tag> {
     return savedTag;
   }
 
-  async findAll(query: TagQueryDto): Promise<PaginatedResponse<Tag>> {
+  async findAllPaginated(query: TagQueryDto): Promise<PaginatedResponse<Tag>> {
     const {
       page = 1,
       limit = 10,
@@ -118,19 +118,11 @@ export class TagService extends BaseService<Tag> {
     queryBuilder.orderBy(`tag.${finalSortBy}`, sortOrder);
 
     const [items, total] = await queryBuilder
-      .skip((page - 1) * limit)
+      .skip(PaginationUtil.calculateSkip(page, limit))
       .take(limit)
       .getManyAndCount();
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page < Math.ceil(total / limit),
-      hasPrev: page > 1,
-    };
+    return PaginationUtil.fromTypeOrmResult([items, total], page, limit);
   }
 
   /**
@@ -138,12 +130,16 @@ export class TagService extends BaseService<Tag> {
    */
   async findById(id: string, includeRelations = true): Promise<Tag> {
     if (!includeRelations) {
-      return super.findById(id);
+      const tag = await super.findById(id);
+      if (!tag) {
+        throw new NotFoundException(ErrorCode.TAG_NOT_FOUND);
+      }
+      return tag;
     }
 
     // 使用统一的缓存策略
-    const cached = await this.cacheStrategy.get<Tag>(id, {
-      type: 'tag',
+    const cached = await this.cacheService.get<Tag>(id, {
+      type: CACHE_TYPES.TAG,
     });
     if (cached) {
       return cached;
@@ -159,9 +155,8 @@ export class TagService extends BaseService<Tag> {
     }
 
     // 缓存标签信息
-    await this.cacheStrategy.set(id, tag, {
-      type: 'tag',
-      ttl: 1800, // 30分钟
+    await this.cacheService.set(id, tag, {
+      type: CACHE_TYPES.TAG,
     });
 
     return tag;
@@ -169,7 +164,9 @@ export class TagService extends BaseService<Tag> {
 
   async findBySlug(slug: string): Promise<Tag> {
     const cacheKey = `tag:slug:${slug}`;
-    const cached = await this.cacheManager.get<Tag>(cacheKey);
+    const cached = await this.cacheService.get<Tag>(cacheKey, {
+      type: CACHE_TYPES.TAG,
+    });
     if (cached) {
       return cached;
     }
@@ -183,13 +180,15 @@ export class TagService extends BaseService<Tag> {
       throw new NotFoundException(ErrorCode.TAG_NOT_FOUND);
     }
 
-    await this.cacheManager.set(cacheKey, tag, 300000);
+    await this.cacheService.set(cacheKey, tag, {
+      type: CACHE_TYPES.TAG,
+    });
     return tag;
   }
 
   async findByIds(ids: string[]): Promise<Tag[]> {
     if (!ids || ids.length === 0) {
-      return [];
+      return [] as Tag[];
     }
 
     return this.tagRepository.find({
@@ -208,7 +207,7 @@ export class TagService extends BaseService<Tag> {
   }
 
   /**
-   * 更新标签（重写BaseService方法以处理slug冲突检查）
+   * 更新标签（重写BaseService方法以处理冲突检查）
    */
   async update(id: string, updateTagDto: UpdateTagDto): Promise<Tag> {
     const tag = await this.findById(id);
@@ -264,14 +263,17 @@ export class TagService extends BaseService<Tag> {
     }
 
     // 使用BaseService的softRemove方法
-    await super.softRemove(id);
+    await super.remove(id);
     await this.clearTagCache();
   }
 
   async getPopular(query: PopularTagsDto): Promise<Tag[]> {
     const { limit = 20, days = 30 } = query;
     const cacheKey = `tags:popular:${limit}:${days}`;
-    const cached = await this.cacheManager.get<Tag[]>(cacheKey);
+
+    const cached = await this.cacheService.get<Tag[]>(cacheKey, {
+      type: CACHE_TYPES.TAG,
+    });
     if (cached) {
       return cached;
     }
@@ -285,7 +287,9 @@ export class TagService extends BaseService<Tag> {
       .limit(limit)
       .getMany();
 
-    await this.cacheManager.set(cacheKey, tags, 1800000); // 30分钟缓存
+    await this.cacheService.set(cacheKey, tags, {
+      type: CACHE_TYPES.TAG,
+    });
     return tags;
   }
 
@@ -319,7 +323,7 @@ export class TagService extends BaseService<Tag> {
       .createQueryBuilder('tag')
       .leftJoin('tag.articles', 'article')
       .where('tag.id = :tagId', { tagId })
-      .andWhere('article.status = :status', { status: 'published' })
+      .andWhere('article.status = :status', { status: ArticleStatus.PUBLISHED })
       .getCount();
 
     await this.tagRepository.update(tagId, { articleCount: count });
@@ -349,7 +353,7 @@ export class TagService extends BaseService<Tag> {
     for (const name of newTagNames) {
       const tag = this.tagRepository.create({
         name,
-        slug: this.generateSlug(name),
+        slug: SlugUtil.forTag(name),
         isActive: true,
       });
       const savedTag = await this.tagRepository.save(tag);
@@ -364,7 +368,12 @@ export class TagService extends BaseService<Tag> {
     { name: string; count: number; weight: number }[]
   > {
     const cacheKey = 'tags:cloud';
-    const cached = await this.cacheManager.get<any[]>(cacheKey);
+
+    const cached = await this.cacheService.get<
+      { name: string; count: number; weight: number }[]
+    >(cacheKey, {
+      type: CACHE_TYPES.TAG,
+    });
     if (cached) {
       return cached;
     }
@@ -388,16 +397,10 @@ export class TagService extends BaseService<Tag> {
       weight: this.calculateWeight(tag.articleCount, minCount, maxCount),
     }));
 
-    await this.cacheManager.set(cacheKey, tagCloud, 1800000); // 30分钟缓存
+    await this.cacheService.set(cacheKey, tagCloud, {
+      type: CACHE_TYPES.TAG,
+    });
     return tagCloud;
-  }
-
-  private generateSlug(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
   }
 
   private calculateWeight(count: number, min: number, max: number): number {
@@ -406,37 +409,8 @@ export class TagService extends BaseService<Tag> {
   }
 
   private async clearTagCache(): Promise<void> {
-    try {
-      // 使用统一的缓存策略清除相关缓存
-      await this.cacheStrategy.clearByTags(['tag', 'content']);
-
-      // 清除特定的缓存键（这些键不遵循标准前缀模式）
-      const specificKeys = ['tags:cloud'];
-
-      const deletePromises = specificKeys.map((key) =>
-        this.cacheManager
-          .del(key)
-          .catch((err) =>
-            console.warn(`Failed to delete cache key ${key}:`, err),
-          ),
-      );
-
-      // 清除按模式匹配的键
-      const patterns = ['tags:popular:*', 'tag:slug:*'];
-
-      for (const pattern of patterns) {
-        deletePromises.push(
-          this.cacheStrategy
-            .clearCacheByPattern(pattern)
-            .catch((err) =>
-              console.warn(`Failed to clear cache pattern ${pattern}:`, err),
-            ),
-        );
-      }
-
-      await Promise.all(deletePromises);
-    } catch (error) {
-      console.error('Failed to clear tag cache:', error);
-    }
+    const specificKeys = ['tags:cloud'];
+    const patterns = ['tags:popular:*', 'tag:slug:*'];
+    await this.clearCacheWithPatterns(specificKeys, patterns);
   }
 }

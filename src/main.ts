@@ -3,8 +3,11 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const logger = await app.resolve(StructuredLoggerService);
+  logger.setContext({ module: 'Bootstrap' });
   const configService = app.get(ConfigService);
   // 启用CORS
   const corsOrigins: (string | RegExp)[] =
@@ -16,7 +19,7 @@ async function bootstrap() {
   app.enableCors({
     origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // 允许的HTTP方法
-    allowedHeaders: ['Content-Type', 'Authorization'], // 允许的请求头
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'], // 允许的请求头
     credentials: true, // 允许携带Cookie（需前端配合设置withCredentials）
   });
   // 全局路由前缀
@@ -57,8 +60,15 @@ async function bootstrap() {
   });
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port);
-  console.log(`🚀 应用程序运行在: http://localhost:${port}`);
-  console.log(`📚 Swagger API文档: http://localhost:${port}/api/docs`);
-  console.log(`🔗 基础API地址: http://localhost:${port}/api`);
+
+  logger.log('应用程序启动成功', {
+    action: 'application_start',
+    metadata: {
+      port,
+      appUrl: `http://localhost:${port}`,
+      docsUrl: `http://localhost:${port}/api/docs`,
+      apiUrl: `http://localhost:${port}/api`,
+    },
+  });
 }
 bootstrap();

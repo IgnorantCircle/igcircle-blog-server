@@ -6,9 +6,10 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { ResponseUtil } from '@/common/utils/response.util';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiResponse } from '@nestjs/swagger';
 import { Public } from '@/decorators/public.decorator';
 import {
   BusinessException,
@@ -17,33 +18,40 @@ import {
   ConflictException,
 } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
-import { PaginationSortDto } from '@/common/dto/pagination.dto';
+import { PaginationSortDto } from '@/dto/base/pagination.dto';
+import {
+  FieldVisibilityInterceptor,
+  UsePublicVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
+import { PaginationUtil } from '@/common/utils/pagination.util';
+import { PaginatedResponse } from '@/common/interfaces/response.interface';
 
 @ApiTags('示例接口')
 @Controller('examples')
 @Public()
+@UseInterceptors(FieldVisibilityInterceptor)
 export class ExampleController {
   @Get('success')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '成功响应示例' })
   @ApiResponse({ status: 200, description: '操作成功' })
-  getSuccess() {
-    return {
-      message: '这是一个成功的响应示例',
-      data: { id: 1, name: '示例数据' },
-    };
+  getSuccess(): { id: number; name: string } {
+    return { id: 1, name: '示例数据' };
   }
 
   @Get('success-custom')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '自定义成功响应示例' })
   @ApiResponse({ status: 200, description: '操作成功' })
-  getSuccessCustom() {
-    return ResponseUtil.success({ id: 1, name: '示例数据' }, '自定义成功消息');
+  getSuccessCustom(): { id: number; name: string } {
+    return { id: 1, name: '示例数据' };
   }
 
   @Get('paginated')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '分页响应示例' })
   @ApiResponse({ status: 200, description: '查询成功' })
-  getPaginated(@Query() query: PaginationSortDto) {
+  getPaginated(@Query() query: PaginationSortDto): any {
     const limit = query.limit || 10;
     const page = query.page || 1;
     const mockData = Array.from({ length: limit }, (_, i) => ({
@@ -51,31 +59,26 @@ export class ExampleController {
       name: `示例数据 ${i + 1}`,
     }));
 
-    return ResponseUtil.paginated(
-      mockData,
-      100, // 总数
-      page,
-      limit,
-      '分页查询成功',
-    );
+    const result: PaginatedResponse<any> =
+      PaginationUtil.buildPaginatedResponse(mockData, 100, page, limit);
+    return result;
   }
 
   @Post('created')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '创建响应示例' })
   @ApiResponse({ status: 201, description: '创建成功' })
-  postCreated(@Body() data: any): {
+  postCreated(@Body() data: Record<string, any>): {
     id: number;
     createdAt: number;
     [key: string]: any;
   } {
-    return { id: Date.now(), createdAt: Date.now(), ...data } as {
-      id: number;
-      createdAt: number;
-      [key: string]: any;
-    };
+    const result = { id: Date.now(), createdAt: Date.now(), ...data };
+    return result;
   }
 
   @Get('not-found')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '404错误示例' })
   @ApiResponse({ status: 404, description: '资源不存在' })
   getNotFound() {
@@ -83,6 +86,7 @@ export class ExampleController {
   }
 
   @Get('business-error')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '业务错误示例' })
   @ApiResponse({ status: 400, description: '业务错误' })
   getBusinessError() {
@@ -93,6 +97,7 @@ export class ExampleController {
   }
 
   @Get('validation-error')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '验证错误示例' })
   @ApiResponse({ status: 400, description: '参数验证失败' })
   getValidationError() {
@@ -103,6 +108,7 @@ export class ExampleController {
   }
 
   @Get('conflict-error')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '冲突错误示例' })
   @ApiResponse({ status: 409, description: '资源冲突' })
   getConflictError() {
@@ -110,20 +116,34 @@ export class ExampleController {
   }
 
   @Get('server-error')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '服务器错误示例' })
   @ApiResponse({ status: 500, description: '服务器内部错误' })
   getServerError() {
-    throw new Error('这是一个服务器内部错误示例');
+    throw new BusinessException(
+      ErrorCode.COMMON_INTERNAL_ERROR,
+      '这是一个服务器内部错误示例',
+    );
   }
 
   @Get('user/:id')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '获取用户示例（带参数验证）' })
-  @ApiResponse({ status: 200, description: '获取成功' })
+  @ApiResponse({
+    status: 200,
+    description: '获取成功',
+    type: Object,
+  })
   @ApiResponse({ status: 404, description: '用户不存在' })
-  getUser(@Param('id', ParseUUIDPipe) id: string) {
+  getUser(@Param('id', ParseUUIDPipe) id: string): {
+    id: string;
+    name: string;
+    email: string;
+  } {
     if (id === '00000000-0000-0000-0000-000000000999') {
       throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
     }
-    return { id, name: `用户${id}`, email: `user${id}@example.com` };
+    const result = { id, name: `用户${id}`, email: `user${id}@example.com` };
+    return result;
   }
 }

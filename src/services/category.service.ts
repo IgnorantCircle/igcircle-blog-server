@@ -1,8 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
 import { Category } from '@/entities/category.entity';
 import {
   NotFoundException,
@@ -14,18 +12,33 @@ import {
   CategoryQueryDto,
   CategoryStatsDto,
 } from '@/dto/category.dto';
+import { ArticleStatus } from '@/dto/article.dto';
 import { PaginatedResponse } from '@/common/interfaces/response.interface';
 import { ErrorCode } from '@/common/constants/error-codes';
+import { BaseService } from '@/common/base/base.service';
+import { SlugUtil } from '@/common/utils/slug.util';
+import { CACHE_TYPES } from '@/common/cache/cache.config';
+import { CacheService } from '@/common/cache/cache.service';
+import { ConfigService } from '@nestjs/config';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { PaginationUtil } from '@/common/utils/pagination.util';
 
 @Injectable()
-export class CategoryService {
+export class CategoryService extends BaseService<Category> {
   constructor(
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
-    @Inject(CACHE_MANAGER)
-    private readonly cacheManager: Cache,
-  ) {}
+    @Inject(CacheService) cacheService: CacheService,
+    @Inject(ConfigService) configService: ConfigService,
+    @Inject(StructuredLoggerService) logger: StructuredLoggerService,
+  ) {
+    super(categoryRepository, 'category', cacheService, configService, logger);
+    this.logger.setContext({ module: 'CategoryService' });
+  }
 
+  /**
+   * 创建分类（重写BaseService方法以处理父分类验证）
+   */
   async create(createCategoryDto: CreateCategoryDto): Promise<Category> {
     const { name, slug, parentId, ...categoryData } = createCategoryDto;
 
@@ -38,12 +51,15 @@ export class CategoryService {
     }
 
     // 生成slug
-    const finalSlug = slug || this.generateSlug(name);
+    const finalSlug = slug || SlugUtil.forCategory(name || 'category');
     const existingBySlug = await this.categoryRepository.findOne({
       where: { slug: finalSlug },
     });
     if (existingBySlug) {
-      throw new ConflictException(ErrorCode.CATEGORY_NAME_EXISTS, '分类slug已存在');
+      throw new ConflictException(
+        ErrorCode.CATEGORY_NAME_EXISTS,
+        '分类slug已存在',
+      );
     }
 
     // 验证父分类
@@ -56,22 +72,22 @@ export class CategoryService {
       }
     }
 
-    const now = Date.now();
-    const category = this.categoryRepository.create({
+    const categoryCreateData = {
       ...categoryData,
       name,
       slug: finalSlug,
       parentId,
-      createdAt: now,
-      updatedAt: now,
-    });
+    };
 
-    const savedCategory = await this.categoryRepository.save(category);
+    // 使用BaseService的create方法
+    const savedCategory = await super.create(categoryCreateData);
     await this.clearCategoryCache();
     return savedCategory;
   }
 
-  async findAll(query: CategoryQueryDto): Promise<PaginatedResponse<Category>> {
+  async findAllPaginated(
+    query: CategoryQueryDto,
+  ): Promise<PaginatedResponse<Category>> {
     const {
       page = 1,
       limit = 10,
@@ -117,24 +133,29 @@ export class CategoryService {
     queryBuilder.orderBy(`category.${finalSortBy}`, sortOrder);
 
     const [items, total] = await queryBuilder
-      .skip((page - 1) * limit)
+      .skip(PaginationUtil.calculateSkip(page, limit))
       .take(limit)
       .getManyAndCount();
 
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page < Math.ceil(total / limit),
-      hasPrev: page > 1,
-    };
+    return PaginationUtil.fromTypeOrmResult([items, total], page, limit);
   }
 
-  async findById(id: string): Promise<Category> {
-    const cacheKey = `category:${id}`;
-    const cached = await this.cacheManager.get<Category>(cacheKey);
+  /**
+   * 根据ID查找分类（重写BaseService方法以包含关联数据）
+   */
+  async findById(id: string, includeRelations = true): Promise<Category> {
+    if (!includeRelations) {
+      const category = await super.findById(id);
+      if (!category) {
+        throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
+      }
+      return category;
+    }
+
+    // 使用统一的缓存策略
+    const cached = await this.cacheService.get<Category>(id, {
+      type: CACHE_TYPES.CATEGORY,
+    });
     if (cached) {
       return cached;
     }
@@ -148,13 +169,19 @@ export class CategoryService {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
-    await this.cacheManager.set(cacheKey, category, 300000); // 5分钟缓存
+    // 缓存分类信息
+    await this.cacheService.set(id, category, {
+      type: CACHE_TYPES.CATEGORY,
+    });
+
     return category;
   }
 
   async findBySlug(slug: string): Promise<Category> {
     const cacheKey = `category:slug:${slug}`;
-    const cached = await this.cacheManager.get<Category>(cacheKey);
+    const cached = await this.cacheService.get<Category>(cacheKey, {
+      type: CACHE_TYPES.CATEGORY,
+    });
     if (cached) {
       return cached;
     }
@@ -168,10 +195,15 @@ export class CategoryService {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
-    await this.cacheManager.set(cacheKey, category, 300000);
+    await this.cacheService.set(cacheKey, category, {
+      type: CACHE_TYPES.CATEGORY,
+    });
     return category;
   }
 
+  /**
+   * 更新分类（重写BaseService方法以处理冲突和父分类验证）
+   */
   async update(
     id: string,
     updateCategoryDto: UpdateCategoryDto,
@@ -195,33 +227,45 @@ export class CategoryService {
         where: { slug },
       });
       if (existingBySlug && existingBySlug.id !== id) {
-        throw new ConflictException(ErrorCode.CATEGORY_NAME_EXISTS, '分类slug已存在');
+        throw new ConflictException(
+          ErrorCode.CATEGORY_NAME_EXISTS,
+          '分类slug已存在',
+        );
       }
     }
 
     // 验证父分类（防止循环引用）
     if (parentId !== undefined && parentId !== category.parentId) {
       if (parentId === id) {
-        throw new ConflictException(ErrorCode.CATEGORY_INVALID_PARENT, '不能将自己设为父分类');
+        throw new ConflictException(
+          ErrorCode.CATEGORY_INVALID_PARENT,
+          '不能将自己设为父分类',
+        );
       }
       if (parentId && (await this.isDescendant(id, parentId))) {
-        throw new ConflictException(ErrorCode.CATEGORY_INVALID_PARENT, '不能将子分类设为父分类');
+        throw new ConflictException(
+          ErrorCode.CATEGORY_INVALID_PARENT,
+          '不能将子分类设为父分类',
+        );
       }
     }
 
-    Object.assign(category, {
+    const updateDataWithValidation = {
       ...updateData,
       ...(name && { name }),
       ...(slug && { slug }),
       ...(parentId !== undefined && { parentId }),
-      updatedAt: Date.now(),
-    });
+    };
 
-    const updatedCategory = await this.categoryRepository.save(category);
+    // 使用BaseService的update方法
+    const updatedCategory = await super.update(id, updateDataWithValidation);
     await this.clearCategoryCache();
     return updatedCategory;
   }
 
+  /**
+   * 删除分类（重写BaseService方法以处理子分类和关联文章检查）
+   */
   async remove(id: string): Promise<void> {
     const category = await this.findById(id);
 
@@ -230,22 +274,30 @@ export class CategoryService {
       where: { parentId: id },
     });
     if (childrenCount > 0) {
-      throw new ConflictException(ErrorCode.CATEGORY_HAS_ARTICLES, '存在子分类，无法删除');
+      throw new ConflictException(
+        ErrorCode.CATEGORY_HAS_ARTICLES,
+        '存在子分类，无法删除',
+      );
     }
 
     // 检查是否有关联文章
     if (category.articleCount > 0) {
-      throw new ConflictException(ErrorCode.CATEGORY_HAS_ARTICLES, '存在关联文章，无法删除');
+      throw new ConflictException(
+        ErrorCode.CATEGORY_HAS_ARTICLES,
+        '存在关联文章，无法删除',
+      );
     }
 
-    // 逻辑删除
-    await this.categoryRepository.softDelete(id);
+    // 使用BaseService的softRemove方法
+    await super.remove(id);
     await this.clearCategoryCache();
   }
 
   async getTree(): Promise<Category[]> {
     const cacheKey = 'category:tree';
-    const cached = await this.cacheManager.get<Category[]>(cacheKey);
+    const cached = await this.cacheService.get<Category[]>(cacheKey, {
+      type: CACHE_TYPES.CATEGORY,
+    });
     if (cached) {
       return cached;
     }
@@ -257,11 +309,20 @@ export class CategoryService {
     });
 
     const tree = this.buildTree(categories);
-    await this.cacheManager.set(cacheKey, tree, 600000); // 10分钟缓存
+    await this.cacheService.set(cacheKey, tree, {
+      type: CACHE_TYPES.CATEGORY,
+    });
     return tree;
   }
 
   async getStats(): Promise<CategoryStatsDto[]> {
+    interface CategoryStatsRaw {
+      category_id: string;
+      category_name: string;
+      category_articleCount: string;
+      childrenCount: string;
+    }
+
     const categories = await this.categoryRepository
       .createQueryBuilder('category')
       .leftJoin('category.children', 'children')
@@ -275,13 +336,13 @@ export class CategoryService {
       ])
       .groupBy('category.id')
       .orderBy('category.articleCount', 'DESC')
-      .getRawMany();
+      .getRawMany<CategoryStatsRaw>();
 
-    return categories.map((cat: any) => ({
-      id: cat.category_id as string,
-      name: cat.category_name as string,
-      articleCount: cat.category_articleCount as number,
-      childrenCount: parseInt(cat.childrenCount) || 0,
+    return categories.map((cat) => ({
+      id: cat.category_id,
+      name: cat.category_name,
+      articleCount: parseInt(cat.category_articleCount, 10) || 0,
+      childrenCount: parseInt(cat.childrenCount, 10) || 0,
     }));
   }
 
@@ -291,7 +352,7 @@ export class CategoryService {
       .leftJoin('category.articles', 'article')
       .where('category.id = :categoryId', { categoryId })
       .andWhere('category.deletedAt IS NULL')
-      .andWhere('article.status = :status', { status: 'published' })
+      .andWhere('article.status = :status', { status: ArticleStatus.PUBLISHED })
       .andWhere('article.deletedAt IS NULL')
       .getCount();
 
@@ -310,28 +371,18 @@ export class CategoryService {
     }
 
     // 如果不存在，创建新分类
-    const slug = this.generateSlug(name);
+    const slug = SlugUtil.forCategory(name);
     const category = this.categoryRepository.create({
       name,
       slug,
       description: '',
       isActive: true,
       articleCount: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
     });
 
     const savedCategory = await this.categoryRepository.save(category);
     await this.clearCategoryCache();
     return savedCategory;
-  }
-
-  private generateSlug(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
   }
 
   private async isDescendant(
@@ -382,9 +433,7 @@ export class CategoryService {
   }
 
   private async clearCategoryCache(): Promise<void> {
-    const keys = ['category:tree', 'category:*'];
-    for (const key of keys) {
-      await this.cacheManager.del(key);
-    }
+    // 使用统一的缓存策略清除相关缓存
+    await this.cacheService.clearByType(CACHE_TYPES.CATEGORY);
   }
 }

@@ -1,5 +1,6 @@
 import { SetMetadata, applyDecorators } from '@nestjs/common';
 import { Repository, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
+import { PaginationUtil } from '@/common/utils/pagination.util';
 
 // 查询优化选项
 export interface QueryOptimizationOptions {
@@ -174,11 +175,14 @@ export class QueryBuilderOptimizer {
     limit: number = 10,
     maxLimit: number = 100,
   ): SelectQueryBuilder<T> {
-    const safeLimit = Math.min(Math.max(limit, 1), maxLimit);
-    const safePage = Math.max(page, 1);
-    const offset = (safePage - 1) * safeLimit;
+    const { page: normalizedPage, limit: normalizedLimit } =
+      PaginationUtil.normalizePaginationParams(page, limit, maxLimit);
+    const offset = PaginationUtil.calculateSkip(
+      normalizedPage,
+      normalizedLimit,
+    );
 
-    return queryBuilder.skip(offset).take(safeLimit);
+    return queryBuilder.skip(offset).take(normalizedLimit);
   }
 
   /**
@@ -358,16 +362,13 @@ export class QueryBuilderOptimizer {
       const joinMethod = select ? `${type}JoinAndSelect` : `${type}Join`;
 
       if (condition) {
-        (queryBuilder as any)[joinMethod](
+        queryBuilder[joinMethod](
           `${queryBuilder.alias}.${relation}`,
           relation,
           condition,
         );
       } else {
-        (queryBuilder as any)[joinMethod](
-          `${queryBuilder.alias}.${relation}`,
-          relation,
-        );
+        queryBuilder[joinMethod](`${queryBuilder.alias}.${relation}`, relation);
       }
     });
 

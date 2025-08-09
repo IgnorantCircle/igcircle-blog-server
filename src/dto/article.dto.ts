@@ -5,41 +5,74 @@ import {
   IsBoolean,
   IsUUID,
   IsInt,
-  IsUrl,
+  IsNumber,
+  IsDateString,
   MinLength,
   MaxLength,
   IsEnum,
-  IsIn,
   Min,
   Max,
+  ArrayMaxSize,
+  IsObject,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
-import { PaginationSortDto } from '@/common/dto/pagination.dto';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { BaseCreateDto, BaseQueryDto } from './base/base.dto';
+import {
+  VALIDATION_LIMITS,
+  ARRAY_LIMITS,
+  NUMERIC_LIMITS,
+  VALIDATION_MESSAGES,
+} from '@/common/constants/validation.constants';
 
-export class CreateArticleDto {
-  @ApiProperty({ description: '文章标题', minLength: 1, maxLength: 200 })
+/**
+ * 文章状态枚举
+ */
+export enum ArticleStatus {
+  DRAFT = 'draft',
+  PUBLISHED = 'published',
+  ARCHIVED = 'archived',
+}
+
+export class CreateArticleDto extends BaseCreateDto {
+  @ApiProperty({
+    description: '文章标题',
+    minLength: VALIDATION_LIMITS.ARTICLE_TITLE.MIN,
+    maxLength: VALIDATION_LIMITS.ARTICLE_TITLE.MAX,
+  })
   @IsString()
-  @MinLength(1, { message: '标题不能为空' })
-  @MaxLength(200, { message: '标题最多200个字符' })
+  @MinLength(VALIDATION_LIMITS.ARTICLE_TITLE.MIN, {
+    message: VALIDATION_MESSAGES.MIN_LENGTH(
+      '文章标题',
+      VALIDATION_LIMITS.ARTICLE_TITLE.MIN,
+    ),
+  })
+  @MaxLength(VALIDATION_LIMITS.ARTICLE_TITLE.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '文章标题',
+      VALIDATION_LIMITS.ARTICLE_TITLE.MAX,
+    ),
+  })
   title: string;
 
-  @ApiPropertyOptional({ description: '文章摘要', maxLength: 500 })
+  @ApiPropertyOptional({
+    description: '文章摘要',
+    maxLength: VALIDATION_LIMITS.ARTICLE_SUMMARY.MAX,
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(500, { message: '摘要最多500个字符' })
+  @MaxLength(VALIDATION_LIMITS.ARTICLE_SUMMARY.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '文章摘要',
+      VALIDATION_LIMITS.ARTICLE_SUMMARY.MAX,
+    ),
+  })
   summary?: string;
 
-  @ApiProperty({ description: '文章内容', minLength: 1 })
-  @IsString()
-  @MinLength(1, { message: '内容不能为空' })
-  content: string;
-
-  @ApiPropertyOptional({ description: '文章slug', maxLength: 200 })
+  @ApiPropertyOptional({ description: '文章内容' })
   @IsOptional()
   @IsString()
-  @MaxLength(200, { message: 'slug不能超过200个字符' })
-  slug?: string;
+  content?: string;
 
   @ApiPropertyOptional({
     description: '文章状态',
@@ -47,7 +80,7 @@ export class CreateArticleDto {
   })
   @IsOptional()
   @IsEnum(['draft', 'published', 'archived'], {
-    message: '状态只能是draft、published或archived',
+    message: VALIDATION_MESSAGES.INVALID_ENUM('文章状态'),
   })
   status?: string;
 
@@ -56,223 +89,195 @@ export class CreateArticleDto {
   @IsString()
   coverImage?: string;
 
-  @ApiPropertyOptional({ description: '标签ID列表', type: [String] })
+  @ApiPropertyOptional({ description: '分类ID数组', type: [String] })
   @IsOptional()
   @IsArray()
-  @IsUUID('4', { each: true })
-  tagIds?: string[];
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
+  })
+  @ArrayMaxSize(ARRAY_LIMITS.CATEGORIES.MAX, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE(
+      '分类',
+      ARRAY_LIMITS.CATEGORIES.MAX,
+    ),
+  })
+  categoryIds?: string[];
 
-  @ApiPropertyOptional({ description: '分类ID' })
-  @IsOptional()
-  @IsUUID()
-  categoryId?: string;
-
-  @ApiPropertyOptional({ description: 'SEO描述', maxLength: 160 })
+  @ApiPropertyOptional({
+    description: 'SEO标题',
+    maxLength: VALIDATION_LIMITS.SEO_TITLE.MAX,
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(160, { message: 'SEO描述最多160个字符' })
-  metaDescription?: string;
+  @MaxLength(VALIDATION_LIMITS.SEO_TITLE.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      'SEO标题',
+      VALIDATION_LIMITS.SEO_TITLE.MAX,
+    ),
+  })
+  seoTitle?: string;
 
-  @ApiPropertyOptional({ description: 'SEO关键词', type: [String] })
+  @ApiPropertyOptional({
+    description: 'SEO描述',
+    maxLength: VALIDATION_LIMITS.SEO_DESCRIPTION.MAX,
+  })
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  metaKeywords?: string[];
+  @IsString()
+  @MaxLength(VALIDATION_LIMITS.SEO_DESCRIPTION.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      'SEO描述',
+      VALIDATION_LIMITS.SEO_DESCRIPTION.MAX,
+    ),
+  })
+  seoDescription?: string;
 
-  @ApiPropertyOptional({ description: '社交媒体分享图片URL' })
+  @ApiPropertyOptional({
+    description: 'SEO关键词',
+    maxLength: VALIDATION_LIMITS.SEO_KEYWORDS.MAX,
+  })
   @IsOptional()
-  @IsUrl({}, { message: '社交图片必须是有效的URL' })
-  socialImage?: string;
-
-  @ApiPropertyOptional({ description: '是否为精选文章', default: false })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isFeatured?: boolean;
-
-  @ApiPropertyOptional({ description: '是否置顶', default: false })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isTop?: boolean;
-
-  @ApiPropertyOptional({ description: '权重', default: 0 })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(999)
-  @Type(() => Number)
-  weight?: number;
+  @IsString()
+  @MaxLength(VALIDATION_LIMITS.SEO_KEYWORDS.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      'SEO关键词',
+      VALIDATION_LIMITS.SEO_KEYWORDS.MAX,
+    ),
+  })
+  seoKeywords?: string;
 
   @ApiPropertyOptional({ description: '是否允许评论', default: true })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  allowComment?: boolean;
-
-  @ApiPropertyOptional({ description: '是否对用户端可见', default: true })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isVisible?: boolean;
-}
-
-export class UpdateArticleDto {
-  @ApiPropertyOptional({
-    description: '文章标题',
-    minLength: 1,
-    maxLength: 200,
-  })
-  @IsOptional()
-  @IsString()
-  @MinLength(1, { message: '标题不能为空' })
-  @MaxLength(200, { message: '标题最多200个字符' })
-  title?: string;
-
-  @ApiPropertyOptional({ description: '文章摘要', maxLength: 500 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(500, { message: '摘要最多500个字符' })
-  summary?: string;
-
-  @ApiPropertyOptional({ description: '文章slug', maxLength: 200 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200, { message: 'slug不能超过200个字符' })
-  slug?: string;
-
-  @ApiPropertyOptional({ description: '文章内容', minLength: 1 })
-  @IsOptional()
-  @IsString()
-  @MinLength(1, { message: '内容不能为空' })
-  content?: string;
-
-  @ApiPropertyOptional({ description: '封面图片URL' })
-  @IsOptional()
-  @IsString()
-  coverImage?: string;
+  @Type(() => Boolean)
+  allowComments?: boolean;
 
   @ApiPropertyOptional({
-    description: '文章状态',
-    enum: ['draft', 'published', 'archived'],
+    description: '预计阅读时间（分钟）',
+    minimum: NUMERIC_LIMITS.READING_TIME.MIN,
+    maximum: NUMERIC_LIMITS.READING_TIME.MAX,
   })
   @IsOptional()
-  @IsEnum(['draft', 'published', 'archived'], {
-    message: '状态只能是draft、published或archived',
+  @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('阅读时间') })
+  @Min(NUMERIC_LIMITS.READING_TIME.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE(
+      '阅读时间',
+      NUMERIC_LIMITS.READING_TIME.MIN,
+    ),
   })
-  status?: string;
-
-  @ApiPropertyOptional({ description: '标签ID列表', type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsUUID('4', { each: true })
-  tagIds?: string[];
-
-  @ApiPropertyOptional({ description: '分类ID' })
-  @IsOptional()
-  @IsUUID()
-  categoryId?: string;
-
-  @ApiPropertyOptional({ description: 'SEO描述', maxLength: 160 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(160, { message: 'SEO描述最多160个字符' })
-  metaDescription?: string;
-
-  @ApiPropertyOptional({ description: 'SEO关键词', type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  metaKeywords?: string[];
-
-  @ApiPropertyOptional({ description: '社交媒体分享图片URL' })
-  @IsOptional()
-  @IsUrl({}, { message: '社交图片必须是有效的URL' })
-  socialImage?: string;
-
-  @ApiPropertyOptional({ description: '是否为精选文章' })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isFeatured?: boolean;
-
-  @ApiPropertyOptional({ description: '是否置顶' })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isTop?: boolean;
-
-  @ApiPropertyOptional({ description: '权重' })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(999)
-  @Type(() => Number)
-  weight?: number;
-
-  @ApiPropertyOptional({ description: '阅读时间（分钟）' })
-  @IsOptional()
-  @IsInt()
-  @Min(1, { message: '阅读时间不能小于1分钟' })
+  @Max(NUMERIC_LIMITS.READING_TIME.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE(
+      '阅读时间',
+      NUMERIC_LIMITS.READING_TIME.MAX,
+    ),
+  })
   @Type(() => Number)
   readingTime?: number;
 
-  @ApiPropertyOptional({ description: '是否允许评论' })
+  @ApiPropertyOptional({ description: '发布时间' })
   @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  allowComment?: boolean;
+  @IsDateString(
+    {},
+    {
+      message: VALIDATION_MESSAGES.INVALID_DATE,
+    },
+  )
+  publishedAt?: string;
 
-  @ApiPropertyOptional({ description: '是否对用户端可见' })
+  @ApiPropertyOptional({
+    description: '自定义字段',
+    type: 'object',
+    additionalProperties: true,
+  })
   @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isVisible?: boolean;
+  @IsObject()
+  customFields?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: '标签ID数组', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('标签ID'),
+  })
+  @ArrayMaxSize(ARRAY_LIMITS.TAGS.MAX, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE('标签', ARRAY_LIMITS.TAGS.MAX),
+  })
+  tagIds?: string[];
 }
 
-export class ArticleQueryDto extends PaginationSortDto {
+/**
+ * 更新文章DTO
+ */
+export class UpdateArticleDto extends PartialType(CreateArticleDto) {}
+
+export class ArticleQueryDto extends BaseQueryDto {
   @ApiPropertyOptional({
-    description: '文章状态',
-    enum: ['draft', 'published', 'archived'],
-    example: 'published',
+    description: '标签ID列表',
+    type: [String],
   })
   @IsOptional()
-  @IsIn(['draft', 'published', 'archived'], {
-    message: '状态只能是draft、published或archived',
+  @IsArray()
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('标签ID'),
   })
-  status?: string;
+  @ArrayMaxSize(ARRAY_LIMITS.TAGS.MAX, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE('标签', ARRAY_LIMITS.TAGS.MAX),
+  })
+  tagIds?: string[];
 
   @ApiPropertyOptional({
     description: '分类ID',
-    example: 'uuid-string',
   })
   @IsOptional()
-  @IsUUID()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
+  })
   categoryId?: string;
 
+  @ApiPropertyOptional({ description: '分类ID数组', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
+  })
+  @ArrayMaxSize(ARRAY_LIMITS.CATEGORIES.MAX, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE(
+      '分类',
+      ARRAY_LIMITS.CATEGORIES.MAX,
+    ),
+  })
+  categoryIds?: string[];
   @ApiPropertyOptional({
-    description: '标签ID',
+    description: '作者ID',
     example: 'uuid-string',
   })
   @IsOptional()
-  @IsUUID()
-  tagId?: string;
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('作者ID'),
+  })
+  authorId?: string;
 
   @ApiPropertyOptional({
-    description: '关键词搜索',
-    example: 'NestJS',
+    description: '文章状态',
+    enum: ArticleStatus,
+    example: ArticleStatus.PUBLISHED,
   })
   @IsOptional()
-  @IsString({ message: '关键词必须是字符串' })
-  keyword?: string;
+  @IsEnum(ArticleStatus, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('文章状态'),
+  })
+  status?: ArticleStatus;
 
   @ApiPropertyOptional({
     description: '是否精选',
     example: true,
   })
   @IsOptional()
+  @IsBoolean({ message: VALIDATION_MESSAGES.INVALID_BOOLEAN('是否精选') })
   @Type(() => Boolean)
-  @IsBoolean({ message: '是否精选必须是布尔值' })
   isFeatured?: boolean;
 
   @ApiPropertyOptional({
@@ -280,118 +285,171 @@ export class ArticleQueryDto extends PaginationSortDto {
     example: false,
   })
   @IsOptional()
+  @IsBoolean({ message: VALIDATION_MESSAGES.INVALID_BOOLEAN('是否置顶') })
   @Type(() => Boolean)
-  @IsBoolean({ message: '是否置顶必须是布尔值' })
   isTop?: boolean;
 
   @ApiPropertyOptional({
-    description: '开始日期（时间戳）',
-    example: 1704067200000,
+    description: '最小阅读时间（分钟）',
+    minimum: NUMERIC_LIMITS.READING_TIME.MIN,
+    example: 5,
   })
   @IsOptional()
-  @IsInt({ message: '开始日期必须是时间戳' })
+  @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('最小阅读时间') })
+  @Min(NUMERIC_LIMITS.READING_TIME.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE(
+      '最小阅读时间',
+      NUMERIC_LIMITS.READING_TIME.MIN,
+    ),
+  })
   @Type(() => Number)
-  startDate?: number;
+  minReadingTime?: number;
 
   @ApiPropertyOptional({
-    description: '结束日期（时间戳）',
-    example: 1735689599000,
+    description: '最大阅读时间（分钟）',
+    maximum: NUMERIC_LIMITS.READING_TIME.MAX,
+    example: 30,
   })
   @IsOptional()
-  @IsInt({ message: '结束日期必须是时间戳' })
+  @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('最大阅读时间') })
+  @Max(NUMERIC_LIMITS.READING_TIME.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE(
+      '最大阅读时间',
+      NUMERIC_LIMITS.READING_TIME.MAX,
+    ),
+  })
   @Type(() => Number)
-  endDate?: number;
+  maxReadingTime?: number;
+
+  @ApiPropertyOptional({
+    description: '年份（用于归档查询）',
+    minimum: NUMERIC_LIMITS.YEAR.MIN,
+    maximum: NUMERIC_LIMITS.YEAR.MAX,
+    example: 2023,
+  })
+  @IsOptional()
+  @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('年份') })
+  @Min(NUMERIC_LIMITS.YEAR.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('年份', NUMERIC_LIMITS.YEAR.MIN),
+  })
+  @Max(NUMERIC_LIMITS.YEAR.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('年份', NUMERIC_LIMITS.YEAR.MAX),
+  })
+  @Type(() => Number)
+  year?: number;
+
+  @ApiPropertyOptional({
+    description: '月份（用于归档查询）',
+    minimum: NUMERIC_LIMITS.MONTH.MIN,
+    maximum: NUMERIC_LIMITS.MONTH.MAX,
+    example: 6,
+  })
+  @IsOptional()
+  @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('月份') })
+  @Min(NUMERIC_LIMITS.MONTH.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('月份', NUMERIC_LIMITS.MONTH.MIN),
+  })
+  @Max(NUMERIC_LIMITS.MONTH.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('月份', NUMERIC_LIMITS.MONTH.MAX),
+  })
+  @Type(() => Number)
+  month?: number;
 
   @ApiPropertyOptional({
     description: '是否包含标签信息',
-    example: false,
+    example: true,
   })
   @IsOptional()
+  @IsBoolean({
+    message: VALIDATION_MESSAGES.INVALID_BOOLEAN('是否包含标签信息'),
+  })
   @Type(() => Boolean)
-  @IsBoolean({ message: '是否包含标签信息必须是布尔值' })
   includeTags?: boolean;
 
   @ApiPropertyOptional({
     description: '是否包含分类信息',
-    example: false,
-  })
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean({ message: '是否包含分类信息必须是布尔值' })
-  includeCategory?: boolean;
-
-  @ApiPropertyOptional({
-    description: '是否对用户端可见',
     example: true,
   })
   @IsOptional()
+  @IsBoolean({
+    message: VALIDATION_MESSAGES.INVALID_BOOLEAN('是否包含分类信息'),
+  })
   @Type(() => Boolean)
-  @IsBoolean({ message: '是否对用户端可见必须是布尔值' })
-  isVisible?: boolean;
+  includeCategory?: boolean;
 }
 
-export class ArticleSearchDto {
-  @ApiProperty({ description: '搜索关键词' })
-  @IsString()
-  @MinLength(1, { message: '搜索关键词不能为空' })
-  q: string;
-
-  @ApiPropertyOptional({ description: '页码', default: 1 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Type(() => Number)
-  page?: number;
-
-  @ApiPropertyOptional({ description: '每页数量', default: 10 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(50)
-  @Type(() => Number)
-  limit?: number;
-
+export class ArticleSearchDto extends BaseQueryDto {
   @ApiPropertyOptional({
-    description: '搜索范围',
-    enum: ['title', 'content', 'all'],
-    default: 'all',
+    description: '标签ID列表',
+    type: [String],
   })
   @IsOptional()
-  @IsEnum(['title', 'content', 'all'])
-  scope?: string;
-
-  @ApiPropertyOptional({ description: '分类ID' })
-  @IsOptional()
-  @IsUUID()
-  categoryId?: string;
-
-  @ApiPropertyOptional({ description: '标签ID列表', type: [String] })
-  @IsOptional()
   @IsArray()
-  @IsUUID('4', { each: true })
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('标签ID'),
+  })
+  @ArrayMaxSize(ARRAY_LIMITS.TAGS.MAX, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE('标签', ARRAY_LIMITS.TAGS.MAX),
+  })
   tagIds?: string[];
+
+  @ApiPropertyOptional({
+    description: '分类ID',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
+  })
+  categoryId?: string;
+  @ApiPropertyOptional({
+    description: '文章状态',
+    enum: ArticleStatus,
+    default: ArticleStatus.PUBLISHED,
+  })
+  @IsOptional()
+  @IsEnum(ArticleStatus, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('文章状态'),
+  })
+  status?: ArticleStatus = ArticleStatus.PUBLISHED;
 }
 
-export class ArticleArchiveDto {
-  @ApiPropertyOptional({ description: '年份' })
+export class ArticleArchiveDto extends BaseQueryDto {
+  @ApiPropertyOptional({
+    description: '年份',
+    minimum: NUMERIC_LIMITS.YEAR.MIN,
+    maximum: NUMERIC_LIMITS.YEAR.MAX,
+  })
   @IsOptional()
   @IsInt()
-  @Min(2000)
-  @Max(2100)
+  @Min(NUMERIC_LIMITS.YEAR.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('年份', NUMERIC_LIMITS.YEAR.MIN),
+  })
+  @Max(NUMERIC_LIMITS.YEAR.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('年份', NUMERIC_LIMITS.YEAR.MAX),
+  })
   @Type(() => Number)
   year?: number;
 
-  @ApiPropertyOptional({ description: '月份' })
+  @ApiPropertyOptional({
+    description: '月份',
+    minimum: NUMERIC_LIMITS.MONTH.MIN,
+    maximum: NUMERIC_LIMITS.MONTH.MAX,
+  })
   @IsOptional()
   @IsInt()
-  @Min(1)
-  @Max(12)
+  @Min(NUMERIC_LIMITS.MONTH.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('月份', NUMERIC_LIMITS.MONTH.MIN),
+  })
+  @Max(NUMERIC_LIMITS.MONTH.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('月份', NUMERIC_LIMITS.MONTH.MAX),
+  })
   @Type(() => Number)
   month?: number;
 
   @ApiPropertyOptional({ description: '是否包含统计信息', default: false })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
+  @Type(() => Boolean)
   includeStats?: boolean;
 }

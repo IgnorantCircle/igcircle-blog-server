@@ -1,28 +1,32 @@
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { IS_PUBLIC_KEY } from '@/decorators/public.decorator';
+import { UserService } from '@/services/user.service';
+import { User } from '@/entities/user.entity';
+import { UnauthorizedException } from '@/common/exceptions/business.exception';
+import { ErrorCode } from '@/common/constants/error-codes';
 
 interface JwtPayload {
   sub: string;
   username: string;
+  iat?: number; // token签发时间
+  exp?: number; // token过期时间
   [key: string]: any;
 }
 
-interface RequestWithUser extends Request {
-  user?: JwtPayload;
-}
+// 使用交叉类型而不是扩展 Request 接口
+type RequestWithUser = Request & { user?: User & JwtPayload };
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
     private reflector: Reflector,
+    private configService: ConfigService,
+    private userService: UserService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -39,18 +43,47 @@ export class JwtAuthGuard implements CanActivate {
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {
-      throw new UnauthorizedException('访问令牌缺失');
+      throw new UnauthorizedException(ErrorCode.AUTH_TOKEN_MISSING);
     }
 
     try {
       const payload: JwtPayload = await this.jwtService.verifyAsync(token, {
-        secret: process.env.JWT_SECRET,
+        secret: this.configService.get<string>('JWT_SECRET'),
       });
 
-      // 将用户信息附加到请求对象
-      request['user'] = payload;
-    } catch {
-      throw new UnauthorizedException('访问令牌无效');
+      // 检查token是否在黑名单中
+      const isBlacklisted = await this.userService.isTokenBlacklisted(token);
+      if (isBlacklisted) {
+        throw new UnauthorizedException(ErrorCode.AUTH_TOKEN_EXPIRED);
+      }
+
+      // 检查用户是否被强制退出
+      if (payload.iat) {
+        const isForcedLogout = await this.userService.isUserForcedLogout(
+          payload.sub,
+          payload.iat * 1000, // 转换为毫秒
+        );
+        if (isForcedLogout) {
+          throw new UnauthorizedException(ErrorCode.AUTH_FORCED_LOGOUT);
+        }
+      }
+
+      // 更新用户最后活跃时间
+      await this.userService.updateUserLastActive(payload.sub);
+
+      // 获取用户信息并附加到请求对象
+      const user = await this.userService.findById(payload.sub);
+      if (!user) {
+        throw new UnauthorizedException(ErrorCode.USER_NOT_FOUND);
+      }
+
+      // 将用户信息和JWT payload合并附加到请求对象
+      request['user'] = { ...user, ...payload } as User & JwtPayload;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException(ErrorCode.AUTH_TOKEN_INVALID);
     }
 
     return true;

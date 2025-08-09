@@ -4,54 +4,54 @@ import {
   Param,
   ParseUUIDPipe,
   UseInterceptors,
-  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { NotFoundException } from '@/common/exceptions/business.exception';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { CategoryService } from '@/services/category.service';
 import { Public } from '@/decorators/public.decorator';
-import { PublicCategoryDto } from '@/dto/base/public.dto';
+import { UnifiedCategoryDto } from '@/dto/base/unified-response.dto';
 import { CategoryQueryDto } from '@/dto/category.dto';
-import { plainToClass } from 'class-transformer';
 import { ErrorCode } from '@/common/constants/error-codes';
+import {
+  FieldVisibilityInterceptor,
+  UsePublicVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
 
 @ApiTags('公共API - 分类')
 @Controller('categories')
 @Public()
-@UseInterceptors(ClassSerializerInterceptor)
+@UseInterceptors(FieldVisibilityInterceptor)
 export class PublicCategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Get()
+  @UsePublicVisibility()
   @ApiOperation({ summary: '获取所有可见分类' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [PublicCategoryDto],
+    type: [UnifiedCategoryDto],
   })
-  async findAll() {
+  async findAll(): Promise<any> {
     const query = new CategoryQueryDto();
     query.page = 1;
     query.limit = 100;
     query.isActive = true;
-    const result = await this.categoryService.findAll(query);
+    const result = await this.categoryService.findAllPaginated(query);
 
-    return result.items.map((category) =>
-      plainToClass(PublicCategoryDto, category, {
-        excludeExtraneousValues: true,
-      }),
-    );
+    return result.items;
   }
 
   @Get(':id')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '根据ID获取分类详情' })
   @ApiParam({ name: 'id', description: '分类ID' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: PublicCategoryDto,
+    type: UnifiedCategoryDto,
   })
-  async findById(@Param('id', ParseUUIDPipe) id: string) {
+  async findById(@Param('id', ParseUUIDPipe) id: string): Promise<any> {
     const category = await this.categoryService.findById(id);
     if (!category) {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
@@ -60,8 +60,6 @@ export class PublicCategoryController {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
-    return plainToClass(PublicCategoryDto, category, {
-      excludeExtraneousValues: true,
-    });
+    return category;
   }
 }

@@ -8,7 +8,6 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
 } from 'typeorm';
-import { Article } from './article.entity';
 
 @Entity('tags')
 export class Tag {
@@ -30,8 +29,8 @@ export class Tag {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
-  @ManyToMany(() => Article, (article) => article.tags)
-  articles: Article[];
+  @ManyToMany('Article', 'tags')
+  articles: any[];
 
   @Column({ type: 'int', default: 0 })
   articleCount: number; // 使用该标签的文章数量

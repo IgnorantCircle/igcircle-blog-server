@@ -2,184 +2,183 @@ import {
   Controller,
   Get,
   Param,
-  Query,
-  ParseIntPipe,
   ParseUUIDPipe,
+  Query,
   UseInterceptors,
-  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { ArticleService } from '@/services/article.service';
+import { ArticleService } from '@/services/article/article.service';
+import { ArticleQueryService } from '@/services/article/article-query.service';
 import { Public } from '@/decorators/public.decorator';
 import {
-  PublicArticleDto,
-  PublicArticleDetailDto,
-} from '@/dto/base/public.dto';
+  UnifiedArticleDto,
+  UnifiedArticleDetailDto,
+} from '@/dto/base/unified-response.dto';
+import { ArticleQueryDto, ArticleStatus } from '@/dto/article.dto';
 import {
-  ArticleQueryDto,
-  ArticleSearchDto,
-  ArticleArchiveDto,
-} from '@/dto/article.dto';
-import { plainToClass } from 'class-transformer';
+  FieldVisibilityInterceptor,
+  UsePublicVisibility,
+} from '@/common/interceptors/field-visibility.interceptor';
+import { NotFoundException } from '@/common/exceptions/business.exception';
+import { ErrorCode } from '@/common/constants/error-codes';
+import { PaginationUtil } from '@/common/utils/pagination.util';
 
 @ApiTags('公共API - 文章')
 @Controller('articles')
 @Public()
-@UseInterceptors(ClassSerializerInterceptor)
+@UseInterceptors(FieldVisibilityInterceptor)
 export class PublicArticleController {
-  constructor(private readonly articleService: ArticleService) {}
+  constructor(
+    private readonly articleService: ArticleService,
+    private readonly articleQueryService: ArticleQueryService,
+  ) {}
 
   @Get()
+  @UsePublicVisibility()
   @ApiOperation({ summary: '获取已发布文章列表' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [PublicArticleDto],
+    type: [UnifiedArticleDto],
   })
   async findPublished(@Query() query: ArticleQueryDto) {
     // 强制只返回已发布且可见的文章
     const publishedQuery = new ArticleQueryDto();
     Object.assign(publishedQuery, query);
-    publishedQuery.status = 'published';
-    publishedQuery.isVisible = true;
-    const result = await this.articleService.findAll(publishedQuery);
+    publishedQuery.status = ArticleStatus.PUBLISHED;
+    const result = await this.articleService.findAllPaginated(publishedQuery);
 
-    const page = Number(publishedQuery.page) || 1;
-    const limit = Number(publishedQuery.limit) || 10;
-    return {
-      items: result.items.map((article) =>
-        plainToClass(PublicArticleDto, article, {
-          excludeExtraneousValues: true,
-        }),
-      ),
-      total: result.total,
-      page,
-      limit,
-      totalPages: Math.ceil(result.total / limit),
-      hasNext: page < Math.ceil(result.total / limit),
-      hasPrev: page > 1,
-    };
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    return PaginationUtil.fromQueryResult(result, page, limit);
   }
 
   @Get('featured')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '获取精选文章' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [PublicArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async findFeatured(@Query('limit', ParseIntPipe) limit: number = 6) {
+  async findFeatured(@Query('limit') limitStr?: string) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 6;
     const articles = await this.articleService.getFeatured(limit);
-    return articles.map((article) =>
-      plainToClass(PublicArticleDto, article, {
-        excludeExtraneousValues: true,
-      }),
-    );
+    return articles;
   }
 
   @Get('recent')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '获取最新文章' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [PublicArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async findRecent(@Query('limit', ParseIntPipe) limit: number = 10) {
+  async findRecent(@Query('limit') limitStr?: string) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 10;
     const articles = await this.articleService.getRecent(limit);
-    return articles.map((article) =>
-      plainToClass(PublicArticleDto, article, {
-        excludeExtraneousValues: true,
-      }),
-    );
+    return articles;
   }
 
   @Get('popular')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '获取热门文章' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: [PublicArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async findPopular(@Query('limit', ParseIntPipe) limit: number = 10) {
+  async findPopular(@Query('limit') limitStr?: string) {
+    const limit = limitStr ? parseInt(limitStr, 10) : 10;
     const articles = await this.articleService.getPopular(limit);
-    return articles.map((article) =>
-      plainToClass(PublicArticleDto, article, {
-        excludeExtraneousValues: true,
-      }),
-    );
+    return articles;
   }
 
   @Get('search')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '搜索文章' })
   @ApiResponse({
     status: 200,
     description: '搜索成功',
-    type: [PublicArticleDto],
+    type: [UnifiedArticleDto],
   })
-  async search(@Query() searchDto: ArticleSearchDto) {
-    const result = await this.articleService.search(searchDto);
-    return {
-      ...result,
-      items: result.articles.map((article) =>
-        plainToClass(PublicArticleDto, article, {
-          excludeExtraneousValues: true,
-        }),
-      ),
-    };
+  async search(@Query() query: ArticleQueryDto) {
+    // 强制只返回已发布的文章
+    const searchQuery = new ArticleQueryDto();
+    Object.assign(searchQuery, query);
+    searchQuery.status = ArticleStatus.PUBLISHED;
+    const result = await this.articleService.findAllPaginated(searchQuery);
+
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    return PaginationUtil.fromQueryResult(result, page, limit);
   }
 
   @Get('archive')
   @ApiOperation({ summary: '获取文章归档' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getArchive(@Query() archiveDto: ArticleArchiveDto) {
-    return await this.articleService.getArchive(archiveDto);
+  async getArchive(@Query() query: ArticleQueryDto): Promise<any> {
+    // 强制只返回已发布的文章
+    const archiveQuery = new ArticleQueryDto();
+    Object.assign(archiveQuery, query);
+    archiveQuery.status = ArticleStatus.PUBLISHED;
+    const result = await this.articleService.findAllPaginated(archiveQuery);
+
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    return PaginationUtil.fromQueryResult(result, page, limit);
   }
 
   @Get(':id')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '根据ID获取文章详情' })
   @ApiParam({ name: 'id', description: '文章ID' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: PublicArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async findById(@Param('id', ParseUUIDPipe) id: string) {
+  async findById(@Param('id', ParseUUIDPipe) id: string): Promise<any> {
     const article = await this.articleService.findById(id);
 
     // 只返回已发布且可见的文章
     if (article.status !== 'published' || !article.isVisible) {
-      throw new Error('文章不存在或不可访问');
+      throw new NotFoundException(
+        ErrorCode.ARTICLE_NOT_FOUND,
+        '文章不存在或不可访问',
+      );
     }
 
     // 增加浏览次数
     await this.articleService.incrementViews(id);
 
-    return plainToClass(PublicArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 
   @Get('slug/:slug')
+  @UsePublicVisibility()
   @ApiOperation({ summary: '根据slug获取文章详情' })
   @ApiParam({ name: 'slug', description: '文章slug' })
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    type: PublicArticleDetailDto,
+    type: UnifiedArticleDetailDto,
   })
-  async findBySlug(@Param('slug') slug: string) {
+  async findBySlug(@Param('slug') slug: string): Promise<any> {
     const article = await this.articleService.findBySlug(slug);
 
     // 只返回已发布且可见的文章
     if (article.status !== 'published' || !article.isVisible) {
-      throw new Error('文章不存在或不可访问');
+      throw new NotFoundException(
+        ErrorCode.ARTICLE_NOT_FOUND,
+        '文章不存在或不可访问',
+      );
     }
 
     // 增加浏览次数
     await this.articleService.incrementViews(article.id);
 
-    return plainToClass(PublicArticleDetailDto, article, {
-      excludeExtraneousValues: true,
-    });
+    return article;
   }
 }

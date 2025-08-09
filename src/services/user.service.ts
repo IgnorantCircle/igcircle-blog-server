@@ -1,38 +1,35 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ConfigService } from '@nestjs/config';
 import { Repository, In } from 'typeorm';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
 import { User } from '@/entities/user.entity';
-import { CreateUserDto, UpdateUserDto } from '@/dto/user.dto';
-import { PaginationSortDto } from '@/common/dto/pagination.dto';
+import { CreateUserDto, UserStatus, UserRole } from '@/dto/user.dto';
 import { NotFoundException } from '@/common/exceptions/business.exception';
 import * as bcrypt from 'bcrypt';
 import { BaseService } from '@/common/base/base.service';
-import { CacheStrategyService } from '@/common/cache/cache-strategy.service';
-import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
-import {
-  QueryOptimization,
-  QueryBuilderOptimizer,
-} from '@/common/decorators/query-optimization.decorator';
+import { QueryOptimization } from '@/common/decorators/query-optimization.decorator';
 import { ErrorCode } from '@/common/constants/error-codes';
 import { BusinessException } from '@/common/exceptions/business.exception';
+import { CACHE_TYPES } from '@/common/cache/cache.config';
+import { CacheService } from '@/common/cache/cache.service';
+import { ConfigService } from '@nestjs/config';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+
 @Injectable()
 export class UserService extends BaseService<User> {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    @Inject(CACHE_MANAGER)
-    private readonly cacheManager: Cache,
-    protected readonly cacheStrategy: CacheStrategyService,
-    protected readonly logger: StructuredLoggerService,
-    protected readonly configService: ConfigService,
+    @Inject(CacheService) cacheService: CacheService,
+    @Inject(ConfigService) configService: ConfigService,
+    @Inject(StructuredLoggerService) logger: StructuredLoggerService,
   ) {
-    super(userRepository, cacheStrategy, 'user', configService);
+    super(userRepository, 'user', cacheService, configService, logger);
     this.logger.setContext({ module: 'UserService' });
   }
 
+  /**
+   * 创建用户（重写BaseService方法以处理密码加密和唯一性检查）
+   */
   @QueryOptimization({
     enableQueryLog: true,
     slowQueryThreshold: 500,
@@ -64,104 +61,51 @@ export class UserService extends BaseService<User> {
       // 加密密码
       const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-      const now = Date.now();
-      const user = this.userRepository.create({
+      const userCreateData = {
         ...createUserDto,
         password: hashedPassword,
-        createdAt: now,
-        updatedAt: now,
-      });
+      };
 
-      const savedUser = await this.userRepository.save(user);
-
-      // 使用新的缓存策略
-      await this.cacheStrategy.set(savedUser.id, savedUser, { type: 'user' });
+      // 使用BaseService的create方法
+      const savedUser = await super.create(userCreateData);
 
       const duration = Date.now() - startTime;
-      this.logger.business('用户创建成功', {
-        businessEvent: 'user_created',
-        entityType: 'user',
-        entityId: savedUser.id,
-        newValue: { username: savedUser.username, email: savedUser.email },
-        metadata: { duration },
+      this.logger.business('用户创建成功', 'info', {
+        action: 'create',
+        resource: 'user',
+        metadata: {
+          event: 'user_created',
+          entityId: savedUser.id,
+          username: savedUser.username,
+          email: savedUser.email,
+          duration,
+        },
       });
 
       return savedUser;
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error('用户创建失败', error.stack, {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('用户创建失败', errorStack, {
         action: 'create',
         resource: 'user',
-        metadata: { duration, error: error.message },
+        metadata: { duration, error: errorMessage },
       });
       throw error;
     }
   }
 
-  @QueryOptimization({
-    cache: { enabled: true, ttl: 300 },
-    enableQueryLog: true,
-  })
-  async findById(id: string): Promise<User> {
-    const startTime = Date.now();
-
-    try {
-      // 使用新的多层缓存策略
-      let user = await this.cacheStrategy.get<User>(id, { type: 'user' });
-
-      if (user) {
-        this.logger.cache('用户缓存命中', {
-          operation: 'get',
-          key: id,
-          hit: true,
-          metadata: { source: 'cache' },
-        });
-        return user;
-      }
-
-      // 缓存未命中，从数据库查找
-      user = await this.userRepository.findOne({
-        where: { id },
-      });
-
-      if (!user) {
-        this.logger.warn('用户未找到', {
-          action: 'findById',
-          resource: 'user',
-          metadata: { id },
-        });
-        throw new BusinessException(ErrorCode.USER_NOT_FOUND);
-      }
-
-      // 缓存用户信息
-      await this.cacheStrategy.set(id, user, { type: 'user' });
-
-      const duration = Date.now() - startTime;
-      this.logger.cache('用户缓存未命中，已更新缓存', {
-        operation: 'set',
-        key: id,
-        hit: false,
-        metadata: { source: 'database', duration },
-      });
-
-      return user;
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error('查找用户失败', error.stack, {
-        action: 'findById',
-        resource: 'user',
-        metadata: { id, duration, error: error.message },
-      });
-      throw error;
-    }
-  }
+  // 移除重复的findById方法，使用BaseService的统一实现
 
   async findByUsername(username: string): Promise<User> {
-    const cacheKey = `user:username:${username}`;
-    const cachedUser = await this.cacheManager.get<User>(cacheKey);
-
-    if (cachedUser) {
-      return cachedUser;
+    // 使用统一的缓存策略
+    const cached = await this.cacheService.get<User>(`username:${username}`, {
+      type: CACHE_TYPES.USER,
+    });
+    if (cached) {
+      return cached;
     }
 
     const user = await this.userRepository.findOne({
@@ -172,7 +116,15 @@ export class UserService extends BaseService<User> {
       throw new NotFoundException(ErrorCode.COMMON_NOT_FOUND, '用户不存在');
     }
 
-    await this.cacheUser(user);
+    // 缓存用户信息，同时缓存ID和username两个键
+    await Promise.all([
+      this.cacheService.set(user.id, user, {
+        type: CACHE_TYPES.USER,
+      }),
+      this.cacheService.set(`username:${username}`, user, {
+        type: CACHE_TYPES.USER,
+      }),
+    ]);
 
     return user;
   }
@@ -183,32 +135,55 @@ export class UserService extends BaseService<User> {
     });
   }
 
-  async updateStatus(
-    id: string,
-    status: 'active' | 'inactive' | 'banned',
-  ): Promise<User> {
+  async updateStatus(id: string, status: UserStatus): Promise<User> {
     const user = await this.findById(id);
+    if (!user) {
+      throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
+    }
     user.status = status;
     const updatedUser = await this.userRepository.save(user);
 
     // 更新缓存
-    await this.cacheUser(updatedUser);
+    await Promise.all([
+      this.cacheService.set(updatedUser.id, updatedUser, {
+        type: CACHE_TYPES.USER,
+      }),
+      this.cacheService.set(`email:${updatedUser.email}`, updatedUser, {
+        type: CACHE_TYPES.USER,
+      }),
+    ]);
 
     return updatedUser;
   }
 
-  async updateRole(id: string, role: 'user' | 'admin'): Promise<User> {
+  async updateRole(id: string, role: UserRole): Promise<User> {
     const user = await this.findById(id);
+    if (!user) {
+      throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
+    }
+
     user.role = role;
     const updatedUser = await this.userRepository.save(user);
 
     // 更新缓存
-    await this.cacheUser(updatedUser);
+    await Promise.all([
+      this.cacheService.set(updatedUser.id, updatedUser, {
+        type: CACHE_TYPES.USER,
+      }),
+      this.cacheService.set(`email:${updatedUser.email}`, updatedUser, {
+        type: CACHE_TYPES.USER,
+      }),
+    ]);
 
     return updatedUser;
   }
 
-  async getStatistics(): Promise<any> {
+  async getStatistics(): Promise<{
+    total: number;
+    activeUsers: number;
+    adminUsers: number;
+    inactiveUsers: number;
+  }> {
     const [total, activeUsers, adminUsers] = await Promise.all([
       this.userRepository.count(),
       this.userRepository.count({
@@ -235,21 +210,45 @@ export class UserService extends BaseService<User> {
     // 软删除
     await this.userRepository.softDelete({ id: In(ids) });
 
-    // 清除缓存
-    await Promise.all(users.map((user) => this.clearUserCache(user)));
+    // 使用统一的缓存策略清除用户缓存
+    await Promise.all(
+      users.flatMap((user) => [
+        this.cacheService.del(user.id, { type: CACHE_TYPES.USER }),
+        this.cacheService.del(`email:${user.email}`, {
+          type: CACHE_TYPES.USER,
+        }),
+        this.cacheService.del(`username:${user.username}`, {
+          type: CACHE_TYPES.USER,
+        }),
+      ]),
+    );
   }
 
   // 获取用户个人统计信息
-  async getUserStatistics(userId: string): Promise<any> {
-    const cacheKey = `user:stats:${userId}`;
-    const cachedStats = await this.cacheManager.get(cacheKey);
-
-    if (cachedStats) {
-      return cachedStats;
+  async getUserStatistics(userId: string): Promise<{
+    totalArticles: number;
+    publishedArticles: number;
+    draftArticles: number;
+    totalViews: number;
+    totalLikes: number;
+    totalShares: number;
+  }> {
+    // 使用统一的缓存策略
+    const cached = await this.cacheService.get<{
+      totalArticles: number;
+      publishedArticles: number;
+      draftArticles: number;
+      totalViews: number;
+      totalLikes: number;
+      totalShares: number;
+    }>(`stats:${userId}`, {
+      type: CACHE_TYPES.USER,
+    });
+    if (cached) {
+      return cached;
     }
 
     // 这里需要根据实际的文章实体关系来查询
-    // 假设文章表中有 authorId 字段
     const stats = {
       totalArticles: 0, // 总文章数
       publishedArticles: 0, // 已发布文章数
@@ -259,152 +258,12 @@ export class UserService extends BaseService<User> {
       totalShares: 0, // 总分享数
     };
 
-    // 缓存统计信息（5分钟）
-    await this.cacheManager.set(cacheKey, stats, 300);
+    // 缓存统计信息
+    await this.cacheService.set(`stats:${userId}`, stats, {
+      type: CACHE_TYPES.STATS,
+    });
 
     return stats;
-  }
-
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-    const user = await this.findById(id);
-
-    Object.assign(user, updateUserDto, {
-      updatedAt: Date.now(),
-    });
-    const updatedUser = await this.userRepository.save(user);
-
-    // 更新缓存
-    await this.cacheUser(updatedUser);
-
-    return updatedUser;
-  }
-
-  async remove(id: string): Promise<void> {
-    const user = await this.findById(id);
-
-    // 逻辑删除
-    const now = Date.now();
-    await this.userRepository.update(
-      { id },
-      { deletedAt: now, updatedAt: now },
-    );
-
-    // 清除缓存
-    await this.clearUserCache(user);
-  }
-
-  @QueryOptimization({
-    pagination: { defaultLimit: 10, maxLimit: 100 },
-    select: [
-      'id',
-      'username',
-      'email',
-      'nickname',
-      'avatar',
-      'bio',
-      'status',
-      'role',
-      'createdAt',
-      'updatedAt',
-    ],
-    enableQueryLog: true,
-    slowQueryThreshold: 1000,
-  })
-  async findAll(
-    query: PaginationSortDto,
-  ): Promise<{ items: User[]; total: number }> {
-    const startTime = Date.now();
-
-    try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'createdAt',
-        sortOrder = 'DESC',
-      } = query;
-
-      // 使用查询构建器优化
-      let queryBuilder = this.userRepository.createQueryBuilder('user');
-
-      // 应用字段选择（排除密码）
-      queryBuilder = queryBuilder.select([
-        'user.id',
-        'user.username',
-        'user.email',
-        'user.nickname',
-        'user.avatar',
-        'user.bio',
-        'user.status',
-        'user.role',
-        'user.createdAt',
-        'user.updatedAt',
-      ]);
-
-      // 排除软删除的用户
-      queryBuilder = QueryBuilderOptimizer.excludeSoftDeleted(
-        queryBuilder,
-        'deletedAt',
-      );
-
-      // 应用排序
-      queryBuilder = QueryBuilderOptimizer.addSorting(
-        queryBuilder,
-        sortBy,
-        sortOrder,
-        ['id', 'username', 'email', 'createdAt', 'updatedAt', 'status', 'role'],
-      );
-
-      // 应用分页
-      queryBuilder = QueryBuilderOptimizer.applyPagination(
-        queryBuilder,
-        page,
-        limit,
-        100,
-      );
-
-      // 执行查询
-      const [users, total] = await queryBuilder.getManyAndCount();
-
-      const duration = Date.now() - startTime;
-      this.logger.performance('用户列表查询完成', {
-        operation: 'findAll',
-        duration,
-        metadata: {
-          page,
-          limit,
-          total,
-          resultCount: users.length,
-          sortBy,
-          sortOrder,
-        },
-      });
-
-      return { items: users, total };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error('用户列表查询失败', error.stack, {
-        action: 'findAll',
-        resource: 'user',
-        metadata: { duration, error: error.message, query },
-      });
-      throw error;
-    }
-  }
-
-  private async cacheUser(user: User): Promise<void> {
-    const ttl = 60 * 60; // 1小时
-
-    await Promise.all([
-      this.cacheManager.set(`user:${user.id}`, user, ttl),
-      this.cacheManager.set(`user:username:${user.username}`, user, ttl),
-    ]);
-  }
-
-  private async clearUserCache(user: User): Promise<void> {
-    await Promise.all([
-      this.cacheManager.del(`user:${user.id}`),
-      this.cacheManager.del(`user:username:${user.username}`),
-    ]);
   }
 
   /**
@@ -415,7 +274,10 @@ export class UserService extends BaseService<User> {
   async blacklistToken(token: string, expiresIn: number): Promise<void> {
     const key = `blacklist:token:${token}`;
     // 设置缓存过期时间为token的剩余有效期
-    await this.cacheManager.set(key, true, expiresIn * 1000);
+    await this.cacheService.set(key, true, {
+      type: CACHE_TYPES.TEMP,
+      ttl: expiresIn,
+    });
   }
 
   /**
@@ -425,7 +287,9 @@ export class UserService extends BaseService<User> {
    */
   async isTokenBlacklisted(token: string): Promise<boolean> {
     const key = `blacklist:token:${token}`;
-    const result = await this.cacheManager.get(key);
+    const result = await this.cacheService.get(key, {
+      type: CACHE_TYPES.TEMP,
+    });
     return !!result;
   }
 
@@ -434,10 +298,12 @@ export class UserService extends BaseService<User> {
    * @param userId 用户ID
    */
   async clearAllUserTokens(userId: string): Promise<void> {
-    // 这里可以实现更复杂的逻辑，比如记录用户的token版本号
-    // 当前简单实现：在缓存中标记用户需要重新登录
+    //在缓存中标记用户需要重新登录
     const key = `user:force_logout:${userId}`;
-    await this.cacheManager.set(key, Date.now(), 24 * 60 * 60 * 1000); // 24小时过期
+    await this.cacheService.set(key, Date.now(), {
+      type: CACHE_TYPES.TEMP,
+      ttl: 24 * 60 * 60, // 24小时过期
+    });
   }
 
   /**
@@ -451,7 +317,9 @@ export class UserService extends BaseService<User> {
     tokenIssuedAt: number,
   ): Promise<boolean> {
     const key = `user:force_logout:${userId}`;
-    const forceLogoutTime = await this.cacheManager.get<number>(key);
+    const forceLogoutTime = await this.cacheService.get<number>(key, {
+      type: CACHE_TYPES.TEMP,
+    });
     return forceLogoutTime ? forceLogoutTime > tokenIssuedAt : false;
   }
 
@@ -469,7 +337,7 @@ export class UserService extends BaseService<User> {
     try {
       // 检查用户基本状态
       const user = await this.findById(userId);
-      if (user.status !== 'active') {
+      if (!user || user.status !== 'active') {
         return {
           onlineStatus: 'offline',
           lastActiveAt: null,
@@ -477,13 +345,15 @@ export class UserService extends BaseService<User> {
       }
 
       // 检查是否被强制退出
-      const forceLogoutTime = await this.cacheManager.get<number>(
+      const forceLogoutTime = await this.cacheService.get<number>(
         `user:force_logout:${userId}`,
+        { type: CACHE_TYPES.TEMP },
       );
 
       // 检查用户最后活跃时间（通过Redis中的session信息）
-      const lastActiveAt = await this.cacheManager.get<number>(
+      const lastActiveAt = await this.cacheService.get<number>(
         `user:last_active:${userId}`,
+        { type: CACHE_TYPES.TEMP },
       );
 
       // 如果有强制退出时间，且没有最后活跃时间或最后活跃时间早于强制退出时间
@@ -556,10 +426,9 @@ export class UserService extends BaseService<User> {
    */
   async updateUserLastActive(userId: string): Promise<void> {
     const now = Date.now();
-    await this.cacheManager.set(
-      `user:last_active:${userId}`,
-      now,
-      24 * 60 * 60 * 1000, // 24小时过期
-    );
+    await this.cacheService.set(`user:last_active:${userId}`, now, {
+      type: CACHE_TYPES.TEMP,
+      ttl: 24 * 60 * 60, // 24小时过期
+    });
   }
 }

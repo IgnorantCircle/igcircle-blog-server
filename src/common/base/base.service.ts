@@ -1,65 +1,50 @@
-import { Injectable } from '@nestjs/common';
 import {
   Repository,
   FindOptionsWhere,
   FindManyOptions,
   DeepPartial,
-  In,
 } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
+import { Injectable, Inject } from '@nestjs/common';
+import { CacheService } from '../cache/cache.service';
+import { StructuredLoggerService } from '../logger/structured-logger.service';
 import { ConfigService } from '@nestjs/config';
-import { CacheStrategyService } from '@/common/cache/cache-strategy.service';
-import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
-import { NotFoundException } from '@/common/exceptions/business.exception';
-import { ErrorCode } from '@/common/constants/error-codes';
-import { PaginationSortDto } from '@/common/dto/pagination.dto';
+import {
+  NotFoundException,
+  ConflictException,
+  ValidationException,
+} from '../exceptions/business.exception';
+import { ErrorCode } from '../constants/error-codes';
+import { PaginationUtil } from '@/common/utils/pagination.util';
 
 export interface BaseEntity {
   id: string;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt?: Date | null;
-}
-
-export interface CacheOptions {
-  ttl?: number; // 缓存时间（秒）
-  prefix?: string; // 缓存前缀
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 @Injectable()
 export abstract class BaseService<T extends BaseEntity> {
-  protected repository: Repository<T>;
-  protected entityName: string;
-  protected cacheStrategy: CacheStrategyService;
-  protected logger: StructuredLoggerService;
-
-  protected cacheOptions: CacheOptions = {
-    ttl: 300, // 默认5分钟
-    prefix: 'entity',
-  };
+  protected readonly defaultCacheTtl: number;
 
   constructor(
-    repository: Repository<T>,
-    cacheStrategy: CacheStrategyService,
-    entityName: string = 'Entity',
-    protected readonly configService: ConfigService,
+    protected readonly repository: Repository<T>,
+    protected readonly entityName: string,
+    @Inject(CacheService) protected readonly cacheService: CacheService,
+    @Inject(ConfigService) protected readonly configService: ConfigService,
+    @Inject(StructuredLoggerService)
+    protected readonly logger: StructuredLoggerService,
   ) {
-    this.repository = repository;
-    this.cacheStrategy = cacheStrategy;
-    this.entityName = entityName;
-    this.logger = new StructuredLoggerService(configService);
-    this.logger.setContext({ module: `${entityName}Service` });
-    this.logger.log('BaseService initialized', {
-      module: entityName,
-      metadata: { timestamp: new Date().toISOString() },
-    });
+    this.defaultCacheTtl =
+      this.configService.get<number>('CACHE_TTL', 300) || 300;
   }
 
   /**
-   * 根据ID查找实体
+   * 根据ID查找实体（带缓存）
    */
-  async findById(id: string, useCache: boolean = true): Promise<T> {
+  async findById(id: string, useCache: boolean = true): Promise<T | null> {
     if (useCache) {
-      const cached = await this.cacheStrategy.get<T>(id, {
+      const cached = await this.cacheService.get<T>(`${id}`, {
         type: this.entityName,
       });
       if (cached) {
@@ -71,14 +56,10 @@ export abstract class BaseService<T extends BaseEntity> {
       where: { id } as FindOptionsWhere<T>,
     });
 
-    if (!entity) {
-      throw new NotFoundException(ErrorCode.COMMON_NOT_FOUND, this.entityName);
-    }
-
-    if (useCache) {
-      await this.cacheStrategy.set(id, entity, {
+    if (entity && useCache) {
+      await this.cacheService.set(`${id}`, entity, {
         type: this.entityName,
-        ttl: this.cacheOptions.ttl,
+        ttl: this.defaultCacheTtl,
       });
     }
 
@@ -86,152 +67,274 @@ export abstract class BaseService<T extends BaseEntity> {
   }
 
   /**
-   * 创建实体
+   * 查找所有实体
    */
-  async create(createDto: DeepPartial<T>): Promise<T> {
-    const entity = this.repository.create(createDto);
-
-    const savedEntity = await this.repository.save(entity);
-    await this.cacheStrategy.set(savedEntity.id, savedEntity, {
-      type: this.entityName,
-      ttl: this.cacheOptions.ttl,
-    });
-
-    return savedEntity;
+  async findAll(options?: FindManyOptions<T>): Promise<T[]> {
+    return await this.repository.find(options);
   }
 
   /**
-   * 更新实体
+   * 分页查找实体
    */
-  async update(id: string, updateDto: DeepPartial<T>): Promise<T> {
-    const entity = await this.findById(id, false);
+  async findAllPaginated(query: {
+    page?: number;
+    limit?: number;
+    [key: string]: any;
+  }): Promise<{ items: T[]; total: number }> {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    const skip = PaginationUtil.calculateSkip(page, limit);
 
-    // TypeORM 装饰器会自动管理 updatedAt
-    const updatedEntity = this.repository.merge(entity, updateDto);
-
-    const savedEntity = await this.repository.save(updatedEntity);
-
-    // 更新缓存
-    await this.cacheStrategy.set(savedEntity.id, savedEntity, {
-      type: this.entityName,
-      ttl: this.cacheOptions.ttl,
-    });
-
-    return savedEntity;
-  }
-
-  /**
-   * 软删除实体
-   */
-  async softRemove(id: string): Promise<void> {
-    const entity = await this.findById(id, false);
-
-    // TypeORM 的 @DeleteDateColumn 会自动管理 deletedAt
-    await this.repository.softDelete(id);
-
-    // 清除缓存
-    await this.cacheStrategy.del(entity.id, {
-      type: this.entityName,
-    });
-  }
-
-  /**
-   * 硬删除实体
-   */
-  async remove(id: string): Promise<void> {
-    const entity = await this.findById(id, false);
-    await this.repository.delete(id);
-    await this.cacheStrategy.del(entity.id, {
-      type: this.entityName,
-    });
-  }
-
-  /**
-   * 分页查询
-   */
-  async findAll(
-    query: PaginationSortDto,
-    additionalWhere?: FindOptionsWhere<T>,
-    relations?: string[],
-  ): Promise<{ items: T[]; total: number }> {
-    const {
-      page = 1,
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'DESC',
-    } = query;
-    const skip = (page - 1) * limit;
-
-    const findOptions: FindManyOptions<T> = {
-      where: {
-        deletedAt: null,
-        ...additionalWhere,
-      } as FindOptionsWhere<T>,
-      order: {
-        [sortBy]: sortOrder,
-      },
+    const [items, total] = await this.repository.findAndCount({
       skip,
       take: limit,
-      relations,
-    };
-
-    const [items, total] = await this.repository.findAndCount(findOptions);
+      ...query,
+    });
 
     return { items, total };
   }
 
   /**
-   * 批量删除
+   * 创建实体
    */
-  async batchRemove(ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
+  async create(entityData: DeepPartial<T>): Promise<T> {
+    const entity = this.repository.create(entityData);
+    const savedEntity = await this.repository.save(entity);
 
-    // 先获取所有实体用于清除缓存
-    const entities = await this.repository.find({
-      where: { id: In(ids) } as FindOptionsWhere<T>,
+    // 确保savedEntity是单个实体而不是数组
+    let result: T;
+    if (Array.isArray(savedEntity)) {
+      result = savedEntity[0] as T;
+    } else {
+      result = savedEntity;
+    }
+
+    // 缓存新创建的实体
+    await this.cacheService.set(`${result.id}`, result, {
+      type: this.entityName,
+      ttl: this.defaultCacheTtl,
     });
 
-    // TypeORM 的 @DeleteDateColumn 会自动管理 deletedAt
-    await this.repository.softDelete({ id: In(ids) } as FindOptionsWhere<T>);
+    return result;
+  }
+
+  /**
+   * 更新实体
+   */
+  async update(id: string, updateData: QueryDeepPartialEntity<T>): Promise<T> {
+    await this.repository.update(id, updateData);
 
     // 清除缓存
-    for (const entity of entities) {
-      await this.cacheStrategy.del(entity.id, {
+    await this.cacheService.del(`${id}`, { type: this.entityName });
+
+    // 重新获取实体
+    const updatedEntity = await this.repository.findOne({
+      where: { id } as FindOptionsWhere<T>,
+    });
+
+    if (updatedEntity) {
+      // 重新缓存
+      await this.cacheService.set(`${id}`, updatedEntity, {
         type: this.entityName,
+        ttl: this.defaultCacheTtl,
       });
+    }
+
+    if (!updatedEntity) {
+      throw new NotFoundException(
+        ErrorCode.COMMON_NOT_FOUND,
+        `${this.entityName} with id ${id} not found`,
+      );
+    }
+
+    return updatedEntity;
+  }
+
+  /**
+   * 删除实体
+   */
+  async remove(id: string): Promise<void> {
+    await this.repository.delete(id);
+
+    // 清除缓存
+    await this.cacheService.del(`${id}`, { type: this.entityName });
+  }
+
+  /**
+   * 批量删除实体
+   */
+  async batchRemove(ids: string[]): Promise<void> {
+    await this.repository.delete(ids);
+
+    // 批量清除缓存
+    for (const id of ids) {
+      await this.cacheService.del(`${id}`, { type: this.entityName });
     }
   }
 
   /**
-   * 统计数量
+   * 清除实体类型的所有缓存
+   */
+  async clearCache(): Promise<void> {
+    await this.cacheService.clearByType(this.entityName);
+  }
+
+  /**
+   * 统一的缓存清理方法，支持自定义缓存键和模式
+   */
+  protected async clearCacheWithPatterns(
+    specificKeys: string[] = [],
+    patterns: string[] = [],
+  ): Promise<void> {
+    try {
+      // 清除实体类型的所有缓存
+      await this.cacheService.clearByType(this.entityName);
+
+      // 清除特定的缓存键
+      const deletePromises = specificKeys.map((key) =>
+        this.cacheService.del(key).catch((err) =>
+          this.logger.warn(`Failed to delete cache ${key}`, {
+            metadata: {
+              key,
+              operation: 'clearCacheWithPatterns',
+              error: err instanceof Error ? err.message : '未知错误',
+            },
+          }),
+        ),
+      );
+
+      // 清除按模式匹配的键
+      for (const pattern of patterns) {
+        deletePromises.push(
+          this.cacheService.clearCacheByPattern(pattern).catch((err) =>
+            this.logger.warn(`Failed to clear cache pattern ${pattern}`, {
+              metadata: {
+                pattern,
+                operation: 'clearCacheWithPatterns',
+                error: err instanceof Error ? err.message : '未知错误',
+              },
+            }),
+          ),
+        );
+      }
+
+      await Promise.all(deletePromises);
+    } catch (error) {
+      this.logger.error(
+        `Failed to clear ${this.entityName} cache`,
+        error instanceof Error ? error.stack : undefined,
+        {
+          metadata: { operation: 'clearCacheWithPatterns' },
+        },
+      );
+    }
+  }
+
+  /**
+   * 统一的错误处理方法
+   */
+  protected handleError(
+    error: unknown,
+    operation: string,
+    context?: unknown,
+  ): never {
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    const dbError = error as {
+      code?: string;
+      detail?: string;
+      message?: string;
+      name?: string;
+    };
+
+    this.logger.error(
+      `${this.entityName} ${operation} failed: ${errorMessage}`,
+      error instanceof Error ? error.stack : undefined,
+      {
+        metadata: {
+          operation,
+          entityName: this.entityName,
+          context,
+          error: errorMessage,
+        },
+      },
+    );
+
+    // 根据错误类型抛出相应的业务异常
+    if (dbError.code === '23505' || dbError.code === 'ER_DUP_ENTRY') {
+      // 数据库唯一约束冲突
+      throw new ConflictException(
+        ErrorCode.COMMON_CONFLICT,
+        `${this.entityName} already exists`,
+      );
+    }
+
+    if (dbError.code === '23503' || dbError.code === 'ER_NO_REFERENCED_ROW_2') {
+      // 外键约束错误
+      throw new ValidationException(`Invalid reference in ${this.entityName}`, [
+        dbError.detail || dbError.message || 'Unknown error',
+      ]);
+    }
+
+    if (error instanceof NotFoundException) {
+      throw error;
+    }
+
+    if (error instanceof ConflictException) {
+      throw error;
+    }
+
+    if (error instanceof ValidationException) {
+      throw error;
+    }
+
+    // 处理其他已知错误类型
+    if (dbError.name === 'QueryFailedError') {
+      throw new ValidationException(
+        `Database operation failed: ${errorMessage}`,
+      );
+    }
+
+    if (dbError.name === 'EntityNotFoundError') {
+      throw new NotFoundException(
+        ErrorCode.COMMON_NOT_FOUND,
+        `${this.entityName} not found`,
+      );
+    }
+
+    // 默认抛出通用错误
+    throw new ValidationException(
+      `${this.entityName} ${operation} failed: ${errorMessage}`,
+      [dbError.detail || dbError.message || 'Unknown error'],
+    );
+  }
+
+  /**
+   * 安全的数据库操作包装器
+   */
+  protected async safeDbOperation<R>(
+    operation: () => Promise<R>,
+    operationName: string,
+    context?: unknown,
+  ): Promise<R> {
+    try {
+      return await operation();
+    } catch (error) {
+      this.handleError(error, operationName, context);
+    }
+  }
+
+  /**
+   * 统计实体数量
    */
   async count(where?: FindOptionsWhere<T>): Promise<number> {
-    return this.repository.count({
-      where: {
-        deletedAt: null,
-        ...where,
-      } as FindOptionsWhere<T>,
-    });
+    return await this.repository.count({ where });
   }
 
   /**
    * 检查实体是否存在
    */
-  async exists(where: FindOptionsWhere<T>): Promise<boolean> {
-    const count = await this.repository.count({ where });
-    return count > 0;
-  }
-
-  /**
-   * 批量缓存
-   */
-  protected async batchCache(entities: T[]): Promise<void> {
-    const promises = entities.map((entity) =>
-      this.cacheStrategy.set(entity.id, entity, {
-        type: this.entityName,
-        ttl: this.cacheOptions.ttl,
-      }),
-    );
-    await Promise.all(promises);
+  async exists(id: string): Promise<boolean> {
+    const entity = await this.findById(id, true);
+    return !!entity;
   }
 }

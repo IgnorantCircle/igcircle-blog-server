@@ -1,132 +1,113 @@
 import {
-  IsString,
+  IsUUID,
+  Min,
   IsOptional,
   IsBoolean,
-  IsInt,
-  IsHexColor,
-  IsUUID,
-  MinLength,
-  MaxLength,
-  Min,
+  IsString,
+  IsNumber,
+  Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { PaginationSortDto } from '@/common/dto/pagination.dto';
+import {
+  BaseCreateDto,
+  BaseUpdateDto,
+  BaseQueryDto,
+  BaseStatsDto,
+} from './base/base.dto';
+import {
+  VALIDATION_MESSAGES,
+  NUMERIC_LIMITS,
+} from '@/common/constants/validation.constants';
 
-export class CreateCategoryDto {
-  @ApiProperty({ description: '分类名称', minLength: 1, maxLength: 100 })
-  @IsString()
-  @MinLength(1, { message: '分类名称不能为空' })
-  @MaxLength(100, { message: '分类名称最多100个字符' })
-  name: string;
-
-  @ApiPropertyOptional({ description: '分类slug', maxLength: 200 })
+export class CreateCategoryDto extends BaseCreateDto {
+  @ApiPropertyOptional({ description: '分类图标' })
   @IsOptional()
   @IsString()
-  @MaxLength(200, { message: 'slug不能超过200个字符' })
-  slug?: string;
-
-  @ApiPropertyOptional({ description: '分类描述' })
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @ApiPropertyOptional({ description: '封面图片URL' })
-  @IsOptional()
-  @IsString()
-  coverImage?: string;
-
-  @ApiPropertyOptional({ description: '分类颜色', example: '#FF5733' })
-  @IsOptional()
-  @IsHexColor({ message: '颜色必须是有效的十六进制颜色值' })
-  color?: string;
-
-  @ApiPropertyOptional({ description: '排序权重', default: 0 })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Type(() => Number)
-  sortOrder?: number;
+  icon?: string;
 
   @ApiPropertyOptional({ description: '父分类ID' })
   @IsOptional()
-  @IsUUID()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('父分类ID'),
+  })
   parentId?: string;
 
-  @ApiPropertyOptional({ description: '是否激活', default: true })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isActive?: boolean;
-}
-
-export class UpdateCategoryDto {
   @ApiPropertyOptional({
-    description: '分类名称',
-    minLength: 1,
-    maxLength: 100,
+    description: '排序权重',
+    minimum: NUMERIC_LIMITS.WEIGHT.MIN,
+    maximum: NUMERIC_LIMITS.WEIGHT.MAX,
   })
   @IsOptional()
-  @IsString()
-  @MinLength(1, { message: '分类名称不能为空' })
-  @MaxLength(100, { message: '分类名称最多100个字符' })
-  name?: string;
-
-  @ApiPropertyOptional({ description: '分类slug', maxLength: 200 })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200, { message: 'slug不能超过200个字符' })
-  slug?: string;
-
-  @ApiPropertyOptional({ description: '分类描述' })
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @ApiPropertyOptional({ description: '封面图片URL' })
-  @IsOptional()
-  @IsString()
-  coverImage?: string;
-
-  @ApiPropertyOptional({ description: '分类颜色', example: '#FF5733' })
-  @IsOptional()
-  @IsHexColor({ message: '颜色必须是有效的十六进制颜色值' })
-  color?: string;
-
-  @ApiPropertyOptional({ description: '排序权重' })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
   @Type(() => Number)
+  @IsNumber(
+    {},
+    {
+      message: VALIDATION_MESSAGES.INVALID_NUMBER('排序权重'),
+    },
+  )
+  @Min(NUMERIC_LIMITS.WEIGHT.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE(
+      '排序权重',
+      NUMERIC_LIMITS.WEIGHT.MIN,
+    ),
+  })
+  @Max(NUMERIC_LIMITS.WEIGHT.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE(
+      '排序权重',
+      NUMERIC_LIMITS.WEIGHT.MAX,
+    ),
+  })
   sortOrder?: number;
-
-  @ApiPropertyOptional({ description: '父分类ID' })
-  @IsOptional()
-  @IsUUID()
-  parentId?: string;
-
-  @ApiPropertyOptional({ description: '是否激活' })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isActive?: boolean;
 }
 
-export class CategoryQueryDto extends PaginationSortDto {
-  @ApiPropertyOptional({ description: '分类名称关键词' })
+export class UpdateCategoryDto extends BaseUpdateDto {
+  @ApiPropertyOptional({ description: '分类图标' })
   @IsOptional()
   @IsString()
-  keyword?: string;
-
-  @ApiPropertyOptional({ description: '是否激活' })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  isActive?: boolean;
+  icon?: string;
 
   @ApiPropertyOptional({ description: '父分类ID' })
   @IsOptional()
-  @IsUUID()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('父分类ID'),
+  })
+  parentId?: string;
+
+  @ApiPropertyOptional({
+    description: '排序权重',
+    minimum: NUMERIC_LIMITS.WEIGHT.MIN,
+    maximum: NUMERIC_LIMITS.WEIGHT.MAX,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber(
+    {},
+    {
+      message: VALIDATION_MESSAGES.INVALID_NUMBER('排序权重'),
+    },
+  )
+  @Min(NUMERIC_LIMITS.WEIGHT.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE(
+      '排序权重',
+      NUMERIC_LIMITS.WEIGHT.MIN,
+    ),
+  })
+  @Max(NUMERIC_LIMITS.WEIGHT.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE(
+      '排序权重',
+      NUMERIC_LIMITS.WEIGHT.MAX,
+    ),
+  })
+  sortOrder?: number;
+}
+
+export class CategoryQueryDto extends BaseQueryDto {
+  @ApiPropertyOptional({ description: '父分类ID' })
+  @IsOptional()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('父分类ID'),
+  })
   parentId?: string;
 
   @ApiPropertyOptional({ description: '是否包含子分类', default: false })
@@ -136,16 +117,7 @@ export class CategoryQueryDto extends PaginationSortDto {
   includeChildren?: boolean;
 }
 
-export class CategoryStatsDto {
-  @ApiProperty({ description: '分类ID' })
-  id: string;
-
-  @ApiProperty({ description: '分类名称' })
-  name: string;
-
-  @ApiProperty({ description: '文章数量' })
-  articleCount: number;
-
+export class CategoryStatsDto extends BaseStatsDto {
   @ApiProperty({ description: '子分类数量' })
   childrenCount: number;
 }

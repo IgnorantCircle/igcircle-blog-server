@@ -1,10 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
-import { CacheStrategyService } from '../cache/cache-strategy.service';
+import { CacheService } from '../cache/cache.service';
 import { StructuredLoggerService } from '../logger/structured-logger.service';
 import { RateLimitException } from '../exceptions/business.exception';
 interface RateLimitOptions {
@@ -19,19 +16,17 @@ interface RateLimitOptions {
 export class RateLimitMiddleware implements NestMiddleware {
   private readonly defaultOptions: RateLimitOptions = {
     windowMs: 60 * 1000, // 1分钟
-    max: 100, // 每分钟最多100个请求
+    max: 500, // 每分钟最多500个请求
   };
 
   private readonly authRouteOptions: RateLimitOptions = {
     windowMs: 60 * 1000, // 1分钟
-    max: 5, // 认证相关接口每分钟最多5个请求
+    max: 10, // 认证相关接口每分钟最多5个请求
   };
 
   constructor(
-    @Inject(CACHE_MANAGER)
-    private readonly cacheManager: Cache,
     private readonly configService: ConfigService,
-    private readonly cacheStrategy: CacheStrategyService,
+    private readonly cacheService: CacheService,
     private readonly logger: StructuredLoggerService,
   ) {
     this.logger.setContext({ module: 'RateLimitMiddleware' });
@@ -48,17 +43,17 @@ export class RateLimitMiddleware implements NestMiddleware {
     try {
       // 使用新的缓存策略获取当前计数
       const current =
-        (await this.cacheStrategy.get<number>(key, { type: 'stats' })) || 0;
+        (await this.cacheService.get<number>(key, { type: 'stats' })) || 0;
 
       if (current >= options.max) {
         // 记录安全日志
-        this.logger.security('请求频率超限', {
-          securityEvent: 'rate_limit_exceeded',
-          severity: 'medium',
-          sourceIp: ip,
-          targetResource: req.path,
+        this.logger.security('请求频率超限', 'warn', {
+          ip,
+          url: req.path,
           userAgent,
           metadata: {
+            event: 'rate_limit_exceeded',
+            severity: 'medium',
             current,
             limit: options.max,
             windowMs: options.windowMs,
@@ -78,7 +73,7 @@ export class RateLimitMiddleware implements NestMiddleware {
       }
 
       // 增加计数
-      await this.cacheStrategy.set(key, current + 1, {
+      await this.cacheService.set(key, current + 1, {
         type: 'stats',
         ttl: Math.ceil(options.windowMs / 1000),
       });
@@ -115,11 +110,19 @@ export class RateLimitMiddleware implements NestMiddleware {
       }
 
       // 限流服务出错时，允许请求通过，但记录错误
-      this.logger.error('限流中间件错误', error.stack, {
-        action: 'rate_limit_error',
-        resource: req.path,
-        metadata: { ip, userAgent, error: error.message },
-      });
+      this.logger.error(
+        '限流中间件错误',
+        error instanceof Error ? error.stack : undefined,
+        {
+          action: 'rate_limit_error',
+          resource: req.path,
+          metadata: {
+            ip,
+            userAgent,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
       next();
     }
   }
@@ -133,12 +136,12 @@ export class RateLimitMiddleware implements NestMiddleware {
     const routeConfigs: Record<string, Partial<RateLimitOptions>> = {
       '/api/auth/login': {
         windowMs: 15 * 60 * 1000, // 15分钟
-        max: 5, // 登录接口更严格
+        max: 10, // 登录接口更严格
         message: '登录尝试过于频繁，请15分钟后再试',
       },
       '/api/auth/register': {
         windowMs: 60 * 60 * 1000, // 1小时
-        max: 3, // 注册接口最严格
+        max: 5, // 注册接口最严格
         message: '注册尝试过于频繁，请1小时后再试',
       },
       '/api/auth/send-verification-code': {

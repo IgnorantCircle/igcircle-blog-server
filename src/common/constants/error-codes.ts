@@ -34,6 +34,8 @@ export enum ErrorCode {
   AUTH_VERIFICATION_CODE_EXPIRED = 'AUTH_008',
   AUTH_RSA_DECRYPT_FAILED = 'AUTH_009',
   AUTH_PERMISSION_DENIED = 'AUTH_010',
+  AUTH_USER_INFO_MISSING = 'AUTH_011',
+  AUTH_FORCED_LOGOUT = 'AUTH_012',
 
   // 文章相关错误 (ARTICLE_xxx)
   ARTICLE_NOT_FOUND = 'ARTICLE_001',
@@ -125,6 +127,8 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.AUTH_VERIFICATION_CODE_EXPIRED]: '验证码已过期',
   [ErrorCode.AUTH_RSA_DECRYPT_FAILED]: 'RSA解密失败',
   [ErrorCode.AUTH_PERMISSION_DENIED]: '权限不足',
+  [ErrorCode.AUTH_USER_INFO_MISSING]: '用户信息缺失',
+  [ErrorCode.AUTH_FORCED_LOGOUT]: '强制退出登录',
 
   // 文章相关错误
   [ErrorCode.ARTICLE_NOT_FOUND]: '文章不存在',

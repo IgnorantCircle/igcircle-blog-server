@@ -8,11 +8,13 @@ import { CommentService } from '@/services/comment.service';
 import { UserCommentController } from '@/controllers/user/comment.controller';
 import { AdminCommentController } from '@/controllers/admin/comment.controller';
 import { AuthModule } from './auth.module';
+import { SharedAuthModule } from './shared-auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Comment, CommentLike, Article, User]),
     AuthModule,
+    SharedAuthModule,
   ],
   controllers: [UserCommentController, AdminCommentController],
   providers: [CommentService],

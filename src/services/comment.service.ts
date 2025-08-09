@@ -1,8 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder, In } from 'typeorm';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
+import { Repository, In, SelectQueryBuilder } from 'typeorm';
 import { Comment } from '@/entities/comment.entity';
 import { CommentLike } from '@/entities/comment-like.entity';
 import { Article } from '@/entities/article.entity';
@@ -11,15 +9,23 @@ import {
   UpdateCommentDto,
   AdminUpdateCommentDto,
   CommentQueryDto,
+  CommentStatus,
 } from '@/dto/comment.dto';
+import { ArticleStatus } from '@/dto/article.dto';
 import {
   NotFoundException,
   ForbiddenException,
 } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
+import { BaseService } from '@/common/base/base.service';
+import { CACHE_TYPES } from '@/common/cache/cache.config';
+import { CacheService } from '@/common/cache/cache.service';
+import { ConfigService } from '@nestjs/config';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { PaginationUtil } from '@/common/utils/pagination.util';
 
 @Injectable()
-export class CommentService {
+export class CommentService extends BaseService<Comment> {
   constructor(
     @InjectRepository(Comment)
     private commentRepository: Repository<Comment>,
@@ -27,14 +33,18 @@ export class CommentService {
     private commentLikeRepository: Repository<CommentLike>,
     @InjectRepository(Article)
     private articleRepository: Repository<Article>,
-    @Inject(CACHE_MANAGER)
-    private cacheManager: Cache,
-  ) {}
+    @Inject(CacheService) cacheService: CacheService,
+    @Inject(ConfigService) configService: ConfigService,
+    @Inject(StructuredLoggerService) logger: StructuredLoggerService,
+  ) {
+    super(commentRepository, 'comment', cacheService, configService, logger);
+    this.logger.setContext({ module: 'CommentService' });
+  }
 
   /**
    * 创建评论
    */
-  async create(
+  async createComment(
     createCommentDto: CreateCommentDto,
     authorId: string,
     ipAddress?: string,
@@ -44,7 +54,7 @@ export class CommentService {
 
     // 检查文章是否存在且允许评论
     const article = await this.articleRepository.findOne({
-      where: { id: articleId, status: 'published' },
+      where: { id: articleId, status: ArticleStatus.PUBLISHED },
     });
 
     if (!article) {
@@ -62,7 +72,7 @@ export class CommentService {
     let parent: Comment | null = null;
     if (parentId) {
       parent = await this.commentRepository.findOne({
-        where: { id: parentId, status: 'active' },
+        where: { id: parentId, status: CommentStatus.ACTIVE },
       });
 
       if (!parent) {
@@ -105,37 +115,19 @@ export class CommentService {
     // 清除相关缓存
     await this.clearCommentCache(articleId);
 
-    return this.findById(savedComment.id);
-  }
-
-  /**
-   * 根据ID查找评论
-   */
-  async findById(id: string): Promise<Comment> {
-    const cacheKey = `comment:${id}`;
-    let comment = await this.cacheManager.get<Comment>(cacheKey);
-
-    if (!comment) {
-      comment =
-        (await this.commentRepository.findOne({
-          where: { id },
-          relations: ['author', 'parent'],
-        })) || undefined;
-
-      if (!comment) {
-        throw new NotFoundException(ErrorCode.COMMENT_NOT_FOUND);
-      }
-
-      await this.cacheManager.set(cacheKey, comment, 3600000); // 1小时
+    const result = await this.findById(savedComment.id);
+    if (!result) {
+      throw new NotFoundException(ErrorCode.COMMENT_NOT_FOUND);
     }
-
-    return comment;
+    return result;
   }
+
+  // 移除重复的findById方法，使用BaseService的统一实现
 
   /**
    * 分页查询评论
    */
-  async findAll(
+  async findAllComments(
     query: CommentQueryDto,
   ): Promise<{ comments: Comment[]; total: number }> {
     const {
@@ -166,7 +158,9 @@ export class CommentService {
       queryBuilder.andWhere('comment.status = :status', { status });
     } else {
       // 默认只显示活跃状态的评论
-      queryBuilder.andWhere('comment.status = :status', { status: 'active' });
+      queryBuilder.andWhere('comment.status = :status', {
+        status: CommentStatus.ACTIVE,
+      });
     }
 
     if (parentId !== undefined) {
@@ -187,7 +181,7 @@ export class CommentService {
     queryBuilder.orderBy(`comment.${sortBy}`, sortOrder);
 
     // 分页
-    const skip = (page - 1) * limit;
+    const skip = PaginationUtil.calculateSkip(page, limit);
     queryBuilder.skip(skip).take(limit);
 
     const [comments, total] = await queryBuilder.getManyAndCount();
@@ -215,12 +209,12 @@ export class CommentService {
     queryDto.sortBy = 'createdAt';
     queryDto.sortOrder = 'DESC';
 
-    const topLevelComments = await this.findAll(queryDto);
+    const topLevelComments = await this.findAllComments(queryDto);
 
     // 为每个顶级评论加载回复（限制数量）
     for (const comment of topLevelComments.comments) {
       if (comment.replyCount > 0) {
-        const replies = await this.findAll({
+        const replies = await this.findAllComments({
           parentId: comment.id,
           page: 1,
           limit: 5, // 默认只显示5条回复
@@ -235,7 +229,7 @@ export class CommentService {
   }
 
   /**
-   * 更新评论
+   * 更新评论（重写BaseService方法以处理权限检查和缓存清除）
    */
   async update(
     id: string,
@@ -243,7 +237,10 @@ export class CommentService {
     userId?: string,
     isAdmin = false,
   ): Promise<Comment> {
-    const comment = await this.findById(id);
+    const comment = await super.findById(id);
+    if (!comment) {
+      throw new NotFoundException(ErrorCode.COMMENT_NOT_FOUND);
+    }
 
     // 权限检查：只有评论作者或管理员可以编辑
     if (!isAdmin && comment.authorId !== userId) {
@@ -265,8 +262,8 @@ export class CommentService {
       Object.assign(comment, adminDto);
     }
 
-    // TypeORM 装饰器会自动管理 updatedAt
-    const updatedComment = await this.commentRepository.save(comment);
+    // 使用BaseService的update方法
+    const updatedComment = await super.update(id, comment);
 
     // 清除缓存
     await this.clearCommentCache(comment.articleId, id);
@@ -275,10 +272,13 @@ export class CommentService {
   }
 
   /**
-   * 删除评论
+   * 删除评论（重写BaseService方法以处理权限检查、评论计数和缓存清除）
    */
   async remove(id: string, userId?: string, isAdmin = false): Promise<void> {
-    const comment = await this.findById(id);
+    const comment = await super.findById(id);
+    if (!comment) {
+      throw new NotFoundException(ErrorCode.COMMENT_NOT_FOUND);
+    }
 
     // 权限检查
     if (!isAdmin && comment.authorId !== userId) {
@@ -288,10 +288,8 @@ export class CommentService {
       );
     }
 
-    // 软删除 - TypeORM 装饰器会自动管理 deletedAt 和 updatedAt
-    comment.status = 'deleted';
-
-    await this.commentRepository.save(comment);
+    // 使用BaseService的softRemove方法
+    await super.remove(id);
 
     // 更新文章评论数
     await this.articleRepository.decrement(
@@ -324,6 +322,9 @@ export class CommentService {
     likeCount: number;
   }> {
     const comment = await this.findById(commentId);
+    if (!comment) {
+      throw new NotFoundException(ErrorCode.COMMENT_NOT_FOUND);
+    }
 
     // 检查是否已点赞
     const existingLike = await this.commentLikeRepository.findOne({
@@ -358,6 +359,9 @@ export class CommentService {
     );
 
     const updatedComment = await this.findById(commentId);
+    if (!updatedComment) {
+      throw new NotFoundException(ErrorCode.COMMENT_NOT_FOUND);
+    }
 
     // 清除缓存
     await this.clearCommentCache(comment.articleId, commentId);
@@ -419,11 +423,22 @@ export class CommentService {
     articleId: string,
     commentId?: string,
   ): Promise<void> {
-    const keys = [`comments:article:${articleId}`];
+    // 使用统一的缓存策略清除相关缓存
+    const promises = [
+      this.cacheService.del(`article:${articleId}`, {
+        type: CACHE_TYPES.COMMENT,
+      }),
+      this.cacheService.del(`tree:${articleId}`, {
+        type: CACHE_TYPES.COMMENT,
+      }),
+    ];
+
     if (commentId) {
-      keys.push(`comment:${commentId}`);
+      promises.push(
+        this.cacheService.del(commentId, { type: CACHE_TYPES.COMMENT }),
+      );
     }
 
-    await Promise.all(keys.map((key) => this.cacheManager.del(key)));
+    await Promise.all(promises);
   }
 }

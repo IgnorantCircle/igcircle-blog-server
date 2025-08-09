@@ -1,8 +1,14 @@
-import { Injectable, BadRequestException, Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager';
+import { Injectable } from '@nestjs/common';
 import { createTransport, Transporter } from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
+import { CacheService } from '@/common/cache/cache.service';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import {
+  BusinessException,
+  RateLimitException,
+} from '@/common/exceptions/business.exception';
+import { ErrorCode } from '@/common/constants/error-codes';
+import { CACHE_TYPES } from '@/common/cache/cache.config';
 
 @Injectable()
 export class EmailService {
@@ -10,8 +16,10 @@ export class EmailService {
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private readonly cacheService: CacheService,
+    private readonly logger: StructuredLoggerService,
   ) {
+    this.logger.setContext({ module: 'EmailService' });
     // 配置邮件传输器
     this.transporter = createTransport({
       host: this.configService.get<string>('MAIL_HOST'),
@@ -37,10 +45,12 @@ export class EmailService {
   async sendVerificationCode(email: string): Promise<void> {
     // 检查是否在冷却期内
     const cooldownKey = `email_cooldown:${email}`;
-    const lastSent = await this.cacheManager.get(cooldownKey);
+    const lastSent = await this.cacheService.get(cooldownKey, {
+      type: CACHE_TYPES.TEMP,
+    });
 
     if (lastSent) {
-      throw new BadRequestException('请等待60秒后再次发送验证码');
+      throw new RateLimitException('请等待60秒后再次发送验证码');
     }
 
     // 生成验证码
@@ -48,14 +58,20 @@ export class EmailService {
 
     // 存储验证码到缓存，有效期5分钟
     const cacheKey = `verification_code:${email}`;
-    await this.cacheManager.set(cacheKey, code, 5 * 60 * 1000); // 5分钟
+    await this.cacheService.set(cacheKey, code, {
+      type: CACHE_TYPES.TEMP,
+      ttl: 5 * 60, // 5分钟
+    });
 
     // 设置冷却期，60秒
-    await this.cacheManager.set(cooldownKey, Date.now(), 60 * 1000); // 60秒
+    await this.cacheService.set(cooldownKey, Date.now(), {
+      type: CACHE_TYPES.TEMP,
+      ttl: 60, // 60秒
+    });
 
     // 发送邮件
     const mailOptions = {
-      from: this.configService.get<string>('MAIL_USER', 'igcircle@163.com'),
+      from: this.configService.get<string>('MAIL_USER'),
       to: email,
       subject: '注册验证码',
       html: `
@@ -77,8 +93,17 @@ export class EmailService {
     try {
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
-      console.error('发送邮件失败:', error);
-      throw new BadRequestException('发送验证码失败，请稍后重试');
+      this.logger.error(
+        '发送邮件失败',
+        error instanceof Error ? error.stack : undefined,
+        {
+          metadata: { email, operation: 'sendVerificationCode' },
+        },
+      );
+      throw new BusinessException(
+        ErrorCode.EMAIL_SEND_FAILED,
+        '发送验证码失败，请稍后重试',
+      );
     }
   }
 
@@ -87,7 +112,9 @@ export class EmailService {
    */
   async verifyCode(email: string, code: string): Promise<boolean> {
     const cacheKey = `verification_code:${email}`;
-    const storedCode = await this.cacheManager.get<string>(cacheKey);
+    const storedCode = await this.cacheService.get<string>(cacheKey, {
+      type: CACHE_TYPES.TEMP,
+    });
 
     if (!storedCode) {
       return false;
@@ -95,7 +122,9 @@ export class EmailService {
 
     if (storedCode === code) {
       // 验证成功后删除验证码
-      await this.cacheManager.del(cacheKey);
+      await this.cacheService.del(cacheKey, {
+        type: CACHE_TYPES.TEMP,
+      });
       return true;
     }
 

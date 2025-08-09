@@ -19,32 +19,6 @@ export interface LogContext {
   metadata?: Record<string, any>;
 }
 
-export interface SecurityLogContext extends LogContext {
-  securityEvent: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  threatType?: string;
-  sourceIp?: string;
-  targetResource?: string;
-}
-
-export interface PerformanceLogContext extends LogContext {
-  operation: string;
-  duration: number;
-  memoryUsage?: NodeJS.MemoryUsage;
-  cpuUsage?: NodeJS.CpuUsage;
-  dbQueryCount?: number;
-  cacheHitRate?: number;
-}
-
-export interface BusinessLogContext extends LogContext {
-  businessEvent: string;
-  entityType?: string;
-  entityId?: string;
-  oldValue?: any;
-  newValue?: any;
-  changeReason?: string;
-}
-
 @Injectable({ scope: Scope.TRANSIENT })
 export class StructuredLoggerService implements LoggerService {
   private readonly logger: winston.Logger;
@@ -97,7 +71,7 @@ export class StructuredLoggerService implements LoggerService {
       );
     }
 
-    // 文件输出
+    // 文件输出 - 简化为两个文件：应用日志和错误日志
     if (enableFile) {
       // 应用日志
       transports.push(
@@ -121,48 +95,6 @@ export class StructuredLoggerService implements LoggerService {
           maxFiles,
           maxSize: maxFileSize,
           level: 'error',
-          format: winston.format.combine(
-            winston.format.timestamp(),
-            winston.format.json(),
-          ),
-        }),
-      );
-
-      // 安全日志
-      transports.push(
-        new DailyRotateFile({
-          filename: `${filePath}/security-%DATE%.log`,
-          datePattern: 'YYYY-MM-DD',
-          maxFiles,
-          maxSize: maxFileSize,
-          format: winston.format.combine(
-            winston.format.timestamp(),
-            winston.format.json(),
-          ),
-        }),
-      );
-
-      // 性能日志
-      transports.push(
-        new DailyRotateFile({
-          filename: `${filePath}/performance-%DATE%.log`,
-          datePattern: 'YYYY-MM-DD',
-          maxFiles,
-          maxSize: maxFileSize,
-          format: winston.format.combine(
-            winston.format.timestamp(),
-            winston.format.json(),
-          ),
-        }),
-      );
-
-      // 业务日志
-      transports.push(
-        new DailyRotateFile({
-          filename: `${filePath}/business-%DATE%.log`,
-          datePattern: 'YYYY-MM-DD',
-          maxFiles,
-          maxSize: maxFileSize,
           format: winston.format.combine(
             winston.format.timestamp(),
             winston.format.json(),
@@ -234,13 +166,16 @@ export class StructuredLoggerService implements LoggerService {
   }
 
   /**
-   * 基础日志方法
+   * 基础日志方法（异步）
    */
   log(message: string, context?: Partial<LogContext>): void {
-    this.logger.info(message, { ...this.context, ...context });
+    setImmediate(() => {
+      this.logger.info(message, { ...this.context, ...context });
+    });
   }
 
   error(message: string, trace?: string, context?: Partial<LogContext>): void {
+    // 错误日志保持同步，确保重要信息不丢失
     this.logger.error(message, {
       ...this.context,
       ...context,
@@ -250,146 +185,97 @@ export class StructuredLoggerService implements LoggerService {
   }
 
   warn(message: string, context?: Partial<LogContext>): void {
-    this.logger.warn(message, {
-      ...this.context,
-      ...context,
-      logType: 'warning',
+    setImmediate(() => {
+      this.logger.warn(message, {
+        ...this.context,
+        ...context,
+        logType: 'warning',
+      });
     });
   }
 
   debug(message: string, context?: Partial<LogContext>): void {
-    this.logger.debug(message, {
-      ...this.context,
-      ...context,
-      logType: 'debug',
+    setImmediate(() => {
+      this.logger.debug(message, {
+        ...this.context,
+        ...context,
+        logType: 'debug',
+      });
     });
   }
 
   verbose(message: string, context?: Partial<LogContext>): void {
-    this.logger.verbose(message, {
-      ...this.context,
-      ...context,
-      logType: 'verbose',
+    setImmediate(() => {
+      this.logger.verbose(message, {
+        ...this.context,
+        ...context,
+        logType: 'verbose',
+      });
     });
   }
 
   /**
-   * 安全日志
+   * 安全相关日志（异步，错误级别保持同步）
    */
-  security(message: string, context: SecurityLogContext): void {
-    this.logger.info(message, {
+  security(
+    message: string,
+    level: 'info' | 'warn' | 'error' = 'warn',
+    context?: Partial<LogContext>,
+  ): void {
+    const securityContext = {
       ...this.context,
       ...context,
       logType: 'security',
-      timestamp: new Date().toISOString(),
-    });
+      category: 'security',
+    };
+
+    switch (level) {
+      case 'error':
+        // 安全错误日志保持同步
+        this.logger.error(message, securityContext);
+        break;
+      case 'warn':
+        setImmediate(() => {
+          this.logger.warn(message, securityContext);
+        });
+        break;
+      default:
+        setImmediate(() => {
+          this.logger.info(message, securityContext);
+        });
+    }
   }
 
   /**
-   * 性能日志
+   * 业务相关日志（异步，错误级别保持同步）
    */
-  performance(message: string, context: PerformanceLogContext): void {
-    this.logger.info(message, {
-      ...this.context,
-      ...context,
-      logType: 'performance',
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  /**
-   * 业务日志
-   */
-  business(message: string, context: BusinessLogContext): void {
-    this.logger.info(message, {
+  business(
+    message: string,
+    level: 'info' | 'warn' | 'error' = 'info',
+    context?: Partial<LogContext>,
+  ): void {
+    const businessContext = {
       ...this.context,
       ...context,
       logType: 'business',
-      timestamp: new Date().toISOString(),
-    });
-  }
+      category: 'business',
+    };
 
-  /**
-   * API访问日志
-   */
-  access(
-    message: string,
-    context: LogContext & {
-      statusCode: number;
-      responseTime: number;
-      contentLength?: number;
-    },
-  ): void {
-    this.logger.info(message, {
-      ...this.context,
-      ...context,
-      logType: 'access',
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  /**
-   * 数据库操作日志
-   */
-  database(
-    message: string,
-    context: LogContext & {
-      operation: string;
-      table: string;
-      duration: number;
-      affectedRows?: number;
-      query?: string;
-    },
-  ): void {
-    this.logger.info(message, {
-      ...this.context,
-      ...context,
-      logType: 'database',
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  /**
-   * 缓存操作日志
-   */
-  cache(
-    message: string,
-    context: LogContext & {
-      operation: 'get' | 'set' | 'del' | 'clear';
-      key: string;
-      hit?: boolean;
-      ttl?: number;
-    },
-  ): void {
-    this.logger.debug(message, {
-      ...this.context,
-      ...context,
-      logType: 'cache',
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  /**
-   * 外部服务调用日志
-   */
-  external(
-    message: string,
-    context: LogContext & {
-      service: string;
-      endpoint: string;
-      method: string;
-      statusCode?: number;
-      duration: number;
-      requestSize?: number;
-      responseSize?: number;
-    },
-  ): void {
-    this.logger.info(message, {
-      ...this.context,
-      ...context,
-      logType: 'external',
-      timestamp: new Date().toISOString(),
-    });
+    switch (level) {
+      case 'error':
+        // 业务错误日志保持同步
+        this.logger.error(message, businessContext);
+        break;
+      case 'warn':
+        setImmediate(() => {
+          this.logger.warn(message, businessContext);
+        });
+        break;
+      default:
+        setImmediate(() => {
+          this.logger.info(message, businessContext);
+        });
+    }
   }
 
   /**
@@ -419,20 +305,5 @@ export class StructuredLoggerService implements LoggerService {
     const childLogger = new StructuredLoggerService(this.configService);
     childLogger.setContext({ ...this.context, ...context });
     return childLogger;
-  }
-
-  /**
-   * 获取日志统计信息
-   */
-  getStats(): {
-    level: string;
-    transports: number;
-    context: LogContext;
-  } {
-    return {
-      level: this.logger.level,
-      transports: this.logger.transports.length,
-      context: this.context,
-    };
   }
 }
