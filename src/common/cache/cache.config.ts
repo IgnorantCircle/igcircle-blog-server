@@ -12,6 +12,7 @@ export const CACHE_TYPES = {
   COMMENT: 'comment',
   STATS: 'stats',
   TEMP: 'temp',
+  AUTH: 'auth', // 认证相关缓存（强制退出、用户活跃时间等）
 } as const;
 
 export type CacheType = (typeof CACHE_TYPES)[keyof typeof CACHE_TYPES];
@@ -24,7 +25,8 @@ export const CACHE_TTL = {
   TAG: 1800, // 30分钟 - 标签（相对稳定）
   COMMENT: 300, // 5分钟 - 评论
   STATS: 900, // 15分钟 - 统计数据
-  TEMP: 60, // 1分钟 - 临时数据
+  TEMP: 60, // 1分钟 - 临时数据（短期缓存）
+  AUTH: 24 * 60 * 60, // 24小时 - 认证相关数据（强制退出、用户活跃时间等）
 } as const;
 
 // 缓存类型与TTL的映射
@@ -36,6 +38,7 @@ export const CACHE_TYPE_TTL_MAP: Record<CacheType, number> = {
   [CACHE_TYPES.COMMENT]: CACHE_TTL.COMMENT,
   [CACHE_TYPES.STATS]: CACHE_TTL.STATS,
   [CACHE_TYPES.TEMP]: CACHE_TTL.TEMP,
+  [CACHE_TYPES.AUTH]: CACHE_TTL.AUTH,
 };
 
 /**

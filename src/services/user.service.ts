@@ -301,8 +301,7 @@ export class UserService extends BaseService<User> {
     //在缓存中标记用户需要重新登录
     const key = `user:force_logout:${userId}`;
     await this.cacheService.set(key, Date.now(), {
-      type: CACHE_TYPES.TEMP,
-      ttl: 24 * 60 * 60, // 24小时过期
+      type: CACHE_TYPES.AUTH, // 使用AUTH类型，默认24小时TTL
     });
   }
 
@@ -318,7 +317,7 @@ export class UserService extends BaseService<User> {
   ): Promise<boolean> {
     const key = `user:force_logout:${userId}`;
     const forceLogoutTime = await this.cacheService.get<number>(key, {
-      type: CACHE_TYPES.TEMP,
+      type: CACHE_TYPES.AUTH,
     });
     return forceLogoutTime ? forceLogoutTime > tokenIssuedAt : false;
   }
@@ -347,13 +346,13 @@ export class UserService extends BaseService<User> {
       // 检查是否被强制退出
       const forceLogoutTime = await this.cacheService.get<number>(
         `user:force_logout:${userId}`,
-        { type: CACHE_TYPES.TEMP },
+        { type: CACHE_TYPES.AUTH },
       );
 
       // 检查用户最后活跃时间（通过Redis中的session信息）
       const lastActiveAt = await this.cacheService.get<number>(
         `user:last_active:${userId}`,
-        { type: CACHE_TYPES.TEMP },
+        { type: CACHE_TYPES.AUTH },
       );
 
       // 如果有强制退出时间，且没有最后活跃时间或最后活跃时间早于强制退出时间
@@ -427,8 +426,7 @@ export class UserService extends BaseService<User> {
   async updateUserLastActive(userId: string): Promise<void> {
     const now = Date.now();
     await this.cacheService.set(`user:last_active:${userId}`, now, {
-      type: CACHE_TYPES.TEMP,
-      ttl: 24 * 60 * 60, // 24小时过期
+      type: CACHE_TYPES.AUTH, // 使用AUTH类型，默认24小时TTL
     });
   }
 }

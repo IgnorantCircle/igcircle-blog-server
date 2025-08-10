@@ -195,8 +195,8 @@ export class CacheService {
    * 构建缓存键
    */
   private buildKey(key: string, type?: string): string {
-    const prefix = type || 'default';
-    return `${this.keyPrefix}:${prefix}:${key}`;
+    const cacheType = type || 'temp';
+    return `${this.keyPrefix}:${cacheType}:${key}`;
   }
 
   /**
