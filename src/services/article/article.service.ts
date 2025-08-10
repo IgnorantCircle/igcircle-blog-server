@@ -9,6 +9,9 @@ import {
   CreateArticleDto,
   UpdateArticleDto,
   ArticleQueryDto,
+  BatchUpdateArticleDto,
+  BatchExportArticleDto,
+  BatchPublishArticleDto,
 } from '@/dto/article.dto';
 import { BaseService } from '@/common/base/base.service';
 import { SlugUtil } from '@/common/utils/slug.util';
@@ -379,6 +382,268 @@ export class ArticleService extends BaseService<Article> {
 
   async batchArchive(ids: string[]): Promise<void> {
     return this.articleStatusService.batchArchive(ids);
+  }
+
+  async batchUpdate(batchUpdateDto: BatchUpdateArticleDto): Promise<void> {
+    const { ids, ...updateData } = batchUpdateDto;
+
+    // 验证文章是否存在
+    const articles = await this.articleRepository.find({
+      where: { id: In(ids) },
+    });
+    if (articles.length !== ids.length) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const updateFields: any = {};
+
+      // 处理基本字段更新
+      if (updateData.status !== undefined) {
+        updateFields.status = updateData.status;
+        if (updateData.status === 'published') {
+          updateFields.publishedAt = new Date();
+        }
+      }
+      if (updateData.isFeatured !== undefined) {
+        updateFields.isFeatured = updateData.isFeatured;
+      }
+      if (updateData.isTop !== undefined) {
+        updateFields.isTop = updateData.isTop;
+      }
+      if (updateData.isVisible !== undefined) {
+        updateFields.isVisible = updateData.isVisible;
+      }
+      if (updateData.categoryId !== undefined) {
+        updateFields.categoryId = updateData.categoryId;
+      }
+
+      updateFields.updatedAt = new Date();
+
+      // 批量更新基本字段
+      if (Object.keys(updateFields).length > 0) {
+        await manager.update(Article, ids, updateFields);
+      }
+
+      // 处理标签关联更新
+      if (updateData.tagIds !== undefined) {
+        for (const id of ids) {
+          const article = await manager.findOne(Article, {
+            where: { id },
+            relations: ['tags'],
+          });
+          if (article) {
+            if (updateData.tagIds.length > 0) {
+              const tags = await manager.getRepository(Tag).find({
+                where: { id: In(updateData.tagIds) },
+              });
+              article.tags = tags;
+            } else {
+              article.tags = [];
+            }
+            await manager.save(article);
+          }
+        }
+      }
+
+      // 清除缓存
+      await Promise.all(ids.map((id) => this.clearArticleCache(id)));
+    });
+  }
+
+  async batchPublishWithDate(
+    batchPublishDto: BatchPublishArticleDto,
+  ): Promise<void> {
+    const { ids, publishedAt } = batchPublishDto;
+    const publishDate = publishedAt ? new Date(publishedAt) : new Date();
+
+    const articles = await this.articleRepository.find({
+      where: { id: In(ids) },
+    });
+    const publishableArticles = articles.filter(
+      (article) => article.status === 'draft',
+    );
+
+    if (publishableArticles.length === 0) {
+      throw new ConflictException(
+        ErrorCode.ARTICLE_INVALID_STATUS,
+        '没有可发布的文章',
+      );
+    }
+
+    await this.articleRepository.update(
+      publishableArticles.map((article) => article.id),
+      {
+        status: 'published',
+        publishedAt: publishDate,
+        updatedAt: new Date(),
+      },
+    );
+
+    // 清除相关缓存
+    await Promise.all(
+      publishableArticles.map((article) => this.clearArticleCache(article.id)),
+    );
+  }
+
+  async batchExport(exportDto: BatchExportArticleDto): Promise<any> {
+    const {
+      ids,
+      format = 'json',
+      status,
+      categoryId,
+      tagIds,
+      includeContent = true,
+      includeTags = true,
+      includeCategory = true,
+    } = exportDto;
+
+    let queryBuilder = this.articleRepository
+      .createQueryBuilder('article')
+      .leftJoinAndSelect('article.author', 'author')
+      .select([
+        'article.id',
+        'article.title',
+        'article.summary',
+        'article.slug',
+        'article.status',
+        'article.coverImage',
+        'article.readingTime',
+        'article.viewCount',
+        'article.likeCount',
+        'article.shareCount',
+        'article.isFeatured',
+        'article.isTop',
+        'article.isVisible',
+        'article.createdAt',
+        'article.updatedAt',
+        'article.publishedAt',
+        'author.id',
+        'author.username',
+        'author.email',
+      ]);
+
+    if (includeContent) {
+      queryBuilder.addSelect('article.content');
+    }
+
+    // 添加分类信息
+    if (includeCategory) {
+      queryBuilder
+        .leftJoinAndSelect('article.category', 'category')
+        .addSelect(['category.id', 'category.name', 'category.slug']);
+    }
+
+    // 添加标签信息
+    if (includeTags) {
+      queryBuilder
+        .leftJoinAndSelect('article.tags', 'tags')
+        .addSelect(['tags.id', 'tags.name', 'tags.slug']);
+    }
+
+    // 应用过滤条件
+    if (ids && ids.length > 0) {
+      queryBuilder.andWhere('article.id IN (:...ids)', { ids });
+    }
+    if (status) {
+      queryBuilder.andWhere('article.status = :status', { status });
+    }
+    if (categoryId) {
+      queryBuilder.andWhere('article.categoryId = :categoryId', { categoryId });
+    }
+    if (tagIds && tagIds.length > 0) {
+      queryBuilder.andWhere('tags.id IN (:...tagIds)', { tagIds });
+    }
+
+    const articles = await queryBuilder.getMany();
+
+    // 根据格式返回数据
+    switch (format) {
+      case 'csv':
+        return this.convertToCSV(articles);
+      case 'markdown':
+        return this.convertToMarkdown(articles);
+      case 'json':
+      default:
+        return articles;
+    }
+  }
+
+  private convertToCSV(articles: Article[]): string {
+    if (articles.length === 0) return '';
+
+    const headers = [
+      'ID',
+      '标题',
+      '摘要',
+      'Slug',
+      '状态',
+      '作者',
+      '分类',
+      '标签',
+      '阅读时间',
+      '浏览次数',
+      '点赞数',
+      '是否精选',
+      '是否置顶',
+      '创建时间',
+      '发布时间',
+    ];
+
+    const rows = articles.map((article) => [
+      article.id,
+      `"${article.title.replace(/"/g, '""')}"`,
+      `"${(article.summary || '').replace(/"/g, '""')}"`,
+      article.slug,
+      article.status,
+      (article as any).author?.username || '',
+      (article as any).category?.name || '',
+      (article as any).tags?.map((tag: any) => tag.name).join(';') || '',
+      article.readingTime || 0,
+      article.viewCount || 0,
+      article.likeCount || 0,
+      article.isFeatured ? '是' : '否',
+      article.isTop ? '是' : '否',
+      article.createdAt?.toISOString() || '',
+      article.publishedAt?.toISOString() || '',
+    ]);
+
+    return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+  }
+
+  private convertToMarkdown(articles: Article[]): string {
+    return articles
+      .map((article) => {
+        let markdown = `# ${article.title}\n\n`;
+
+        if (article.summary) {
+          markdown += `**摘要**: ${article.summary}\n\n`;
+        }
+
+        markdown += `**状态**: ${article.status}\n`;
+        markdown += `**作者**: ${(article as any).author?.username || '未知'}\n`;
+
+        if ((article as any).category) {
+          markdown += `**分类**: ${(article as any).category.name}\n`;
+        }
+
+        if ((article as any).tags && (article as any).tags.length > 0) {
+          markdown += `**标签**: ${(article as any).tags.map((tag: any) => tag.name).join(', ')}\n`;
+        }
+
+        markdown += `**创建时间**: ${article.createdAt?.toISOString() || ''}\n`;
+
+        if (article.publishedAt) {
+          markdown += `**发布时间**: ${article.publishedAt.toISOString()}\n`;
+        }
+
+        if ((article as any).content) {
+          markdown += `\n---\n\n${(article as any).content}`;
+        }
+
+        return markdown;
+      })
+      .join('\n\n---\n\n');
   }
 
   async getFeatured(limit: number = 10): Promise<Article[]> {

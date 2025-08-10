@@ -240,7 +240,7 @@ export class ArticleQueryService {
   }
 
   /**
-   * 获取精选文章（优化版）
+   * 获取精选文章
    */
   async getFeaturedArticles(
     options: ArticleQueryOptions = {},

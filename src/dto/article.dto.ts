@@ -13,6 +13,7 @@ import {
   Min,
   Max,
   ArrayMaxSize,
+  ArrayNotEmpty,
   IsObject,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -110,6 +111,12 @@ export class CreateArticleDto extends BaseCreateDto {
     ),
   })
   categoryIds?: string[];
+
+  @ApiPropertyOptional({ description: '是否可见' })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isVisible?: boolean;
 
   @ApiPropertyOptional({
     description: 'SEO标题',
@@ -477,4 +484,213 @@ export class ArticleArchiveDto extends BaseQueryDto {
   @IsBoolean()
   @Type(() => Boolean)
   includeStats?: boolean;
+}
+
+/**
+ * 批量操作DTO
+ */
+export class BatchArticleOperationDto {
+  @ApiProperty({
+    description: '文章ID列表',
+    type: [String],
+    example: ['uuid1', 'uuid2', 'uuid3'],
+  })
+  @IsArray({
+    message: '文章ID列表必须是数组',
+  })
+  @ArrayNotEmpty({
+    message: '文章ID列表不能为空',
+  })
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('文章ID'),
+  })
+  @ArrayMaxSize(50, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE('文章ID', 50),
+  })
+  ids: string[];
+}
+
+/**
+ * 批量发布文章DTO
+ */
+export class BatchPublishArticleDto {
+  @ApiProperty({
+    description: '文章ID列表',
+    type: [String],
+    example: ['uuid1', 'uuid2', 'uuid3'],
+  })
+  @IsArray({
+    message: '文章ID列表必须是数组',
+  })
+  @ArrayNotEmpty({
+    message: '文章ID列表不能为空',
+  })
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('文章ID'),
+  })
+  @ArrayMaxSize(50, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE('文章ID', 50),
+  })
+  ids: string[];
+
+  @ApiPropertyOptional({
+    description: '发布时间',
+    example: '2023-12-01T00:00:00.000Z',
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    {
+      message: VALIDATION_MESSAGES.INVALID_DATE,
+    },
+  )
+  publishedAt?: string;
+}
+
+/**
+ * 批量更新文章DTO
+ */
+export class BatchUpdateArticleDto extends BatchArticleOperationDto {
+  @ApiPropertyOptional({
+    description: '分类ID',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
+  })
+  categoryId?: string;
+
+  @ApiPropertyOptional({
+    description: '标签ID列表',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('标签ID'),
+  })
+  @ArrayMaxSize(ARRAY_LIMITS.TAGS.MAX, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE('标签', ARRAY_LIMITS.TAGS.MAX),
+  })
+  tagIds?: string[];
+
+  @ApiPropertyOptional({
+    description: '文章状态',
+    enum: ArticleStatus,
+  })
+  @IsOptional()
+  @IsEnum(ArticleStatus, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('文章状态'),
+  })
+  status?: ArticleStatus;
+
+  @ApiPropertyOptional({ description: '是否精选' })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isFeatured?: boolean;
+
+  @ApiPropertyOptional({ description: '是否置顶' })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isTop?: boolean;
+
+  @ApiPropertyOptional({ description: '是否可见' })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isVisible?: boolean;
+}
+
+/**
+ * 批量导出文章DTO
+ */
+export class BatchExportArticleDto {
+  @ApiPropertyOptional({
+    description: '文章ID列表（如果不提供则导出所有符合条件的文章）',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('文章ID'),
+  })
+  @ArrayMaxSize(100, {
+    message: VALIDATION_MESSAGES.ARRAY_MAX_SIZE('文章ID', 100),
+  })
+  ids?: string[];
+
+  @ApiPropertyOptional({
+    description: '导出格式',
+    enum: ['json', 'csv', 'markdown'],
+    default: 'json',
+  })
+  @IsOptional()
+  @IsEnum(['json', 'csv', 'markdown'], {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('导出格式'),
+  })
+  format?: 'json' | 'csv' | 'markdown';
+
+  @ApiPropertyOptional({
+    description: '文章状态过滤',
+    enum: ArticleStatus,
+  })
+  @IsOptional()
+  @IsEnum(ArticleStatus, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('文章状态'),
+  })
+  status?: ArticleStatus;
+
+  @ApiPropertyOptional({
+    description: '分类ID过滤',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
+  })
+  categoryId?: string;
+
+  @ApiPropertyOptional({
+    description: '标签ID列表过滤',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', {
+    each: true,
+    message: VALIDATION_MESSAGES.INVALID_UUID('标签ID'),
+  })
+  tagIds?: string[];
+
+  @ApiPropertyOptional({
+    description: '是否包含内容',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  includeContent?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否包含标签信息',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  includeTags?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否包含分类信息',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  includeCategory?: boolean;
 }

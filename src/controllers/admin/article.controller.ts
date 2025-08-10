@@ -33,6 +33,10 @@ import {
   UpdateArticleDto,
   ArticleQueryDto,
   ArticleStatus,
+  BatchArticleOperationDto,
+  BatchUpdateArticleDto,
+  BatchPublishArticleDto,
+  BatchExportArticleDto,
 } from '@/dto/article.dto';
 import { PublishArticleDto } from '@/dto/publish-article.dto';
 import {
@@ -202,6 +206,52 @@ export class AdminArticleController {
     return article;
   }
 
+  // 批量操作路由 - 必须放在参数化路由之前
+  @Delete('batch')
+  @ApiOperation({ summary: '批量删除文章' })
+  @ApiResponse({ status: 200, description: '批量删除成功' })
+  async batchRemove(
+    @Body() batchDto: BatchArticleOperationDto,
+  ): Promise<{ message: string }> {
+    await this.articleService.batchRemove(batchDto.ids);
+    return { message: `成功删除 ${batchDto.ids.length} 篇文章` };
+  }
+
+  @Put('batch/publish')
+  @ApiOperation({ summary: '批量发布文章' })
+  @ApiResponse({ status: 200, description: '批量发布成功' })
+  async batchPublish(
+    @Body() batchPublishDto: BatchPublishArticleDto,
+  ): Promise<{ message: string }> {
+    if (batchPublishDto.publishedAt) {
+      await this.articleService.batchPublishWithDate(batchPublishDto);
+    } else {
+      await this.articleService.batchPublish(batchPublishDto.ids);
+    }
+    return { message: `成功发布 ${batchPublishDto.ids.length} 篇文章` };
+  }
+
+  @Put('batch/archive')
+  @ApiOperation({ summary: '批量归档文章' })
+  @ApiResponse({ status: 200, description: '批量归档成功' })
+  async batchArchive(
+    @Body() batchDto: BatchArticleOperationDto,
+  ): Promise<{ message: string }> {
+    await this.articleService.batchArchive(batchDto.ids);
+    return { message: `成功归档 ${batchDto.ids.length} 篇文章` };
+  }
+
+  @Put('batch/update')
+  @ApiOperation({ summary: '批量更新文章' })
+  @ApiResponse({ status: 200, description: '批量更新成功' })
+  async batchUpdate(
+    @Body() batchUpdateDto: BatchUpdateArticleDto,
+  ): Promise<{ message: string }> {
+    await this.articleService.batchUpdate(batchUpdateDto);
+    return { message: `成功更新 ${batchUpdateDto.ids.length} 篇文章` };
+  }
+
+  // 单个文章操作路由 - 放在批量操作之后
   @Put(':id/publish')
   @UseAdminVisibility()
   @ApiOperation({ summary: '发布文章' })
@@ -304,11 +354,29 @@ export class AdminArticleController {
     return { message: '文章删除成功' };
   }
 
-  @Delete('batch')
-  @ApiOperation({ summary: '批量删除文章' })
-  @ApiResponse({ status: 200, description: '批量删除成功' })
-  async batchRemove(@Body('ids') ids: string[]): Promise<{ message: string }> {
-    await this.articleService.batchRemove(ids);
-    return { message: `成功删除 ${ids.length} 篇文章` };
+  @Post('batch/export')
+  @ApiOperation({ summary: '批量导出文章' })
+  @ApiResponse({ status: 200, description: '导出成功' })
+  async batchExport(@Body() exportDto: BatchExportArticleDto): Promise<{
+    data: string | Record<string, unknown>[];
+    format: string;
+    filename?: string;
+    count?: number;
+  }> {
+    const result = await this.articleService.batchExport(exportDto);
+
+    if (exportDto.format === 'csv' || exportDto.format === 'markdown') {
+      return {
+        data: result as string,
+        format: exportDto.format,
+        filename: `articles_export_${new Date().toISOString().split('T')[0]}.${exportDto.format}`,
+      };
+    }
+
+    return {
+      data: result as Record<string, unknown>[],
+      format: 'json',
+      count: Array.isArray(result) ? result.length : 0,
+    };
   }
 }

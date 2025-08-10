@@ -178,14 +178,6 @@ export class AdminUserController {
     return { message: '用户删除成功' };
   }
 
-  @Delete('batch')
-  @ApiOperation({ summary: '批量删除用户' })
-  @ApiResponse({ status: 200, description: '批量删除成功' })
-  async batchRemove(@Body('ids') ids: string[]): Promise<{ message: string }> {
-    await this.userService.batchRemove(ids);
-    return { message: `成功删除 ${ids.length} 个用户` };
-  }
-
   @Get(':id/online-status')
   @ApiOperation({ summary: '获取用户实时在线状态' })
   @ApiParam({ name: 'id', description: '用户ID' })
