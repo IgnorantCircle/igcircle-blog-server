@@ -55,7 +55,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '用户登录' })
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
-  @ApiResponse({ status: 401, description: '用户名或密码错误' })
+  @ApiResponse({ status: 400, description: '用户名或密码错误' })
   async login(@Body() loginDto: LoginDto): Promise<LoginResponseDto> {
     const { username, password } = loginDto;
 
@@ -86,10 +86,7 @@ export class AuthController {
         );
       }
     } catch {
-      throw new UnauthorizedException(
-        ErrorCode.USER_INVALID_CREDENTIALS,
-        '用户名或密码错误',
-      );
+      throw new UnauthorizedException(ErrorCode.USER_INVALID_CREDENTIALS);
     }
 
     // 验证密码
@@ -144,7 +141,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '管理员登录' })
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
-  @ApiResponse({ status: 401, description: '用户名或密码错误或权限不足' })
+  @ApiResponse({ status: 400, description: '用户名或密码错误' })
   async adminLogin(@Body() loginDto: LoginDto): Promise<LoginResponseDto> {
     const result = await this.login(loginDto);
 

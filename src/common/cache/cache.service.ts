@@ -24,9 +24,25 @@ export class CacheService {
    * 获取缓存
    */
   async get<T>(key: string, options?: BaseCacheOptions): Promise<T | null> {
-    const fullKey = this.buildKey(key, options?.type);
-    const result = await this.cacheManager.get<T>(fullKey);
-    return result || null;
+    try {
+      const fullKey = this.buildKey(key, options?.type);
+      const result = await this.cacheManager.get<T>(fullKey);
+      return result || null;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to get cache for key ${key}: ${(error as Error).message}`,
+        {
+          metadata: {
+            key,
+            type: options?.type,
+            operation: 'get',
+            error: (error as Error).message,
+          },
+        },
+      );
+      // 缓存失败时返回null，不影响业务逻辑
+      return null;
+    }
   }
 
   /**
@@ -37,18 +53,48 @@ export class CacheService {
     value: T,
     options?: BaseCacheOptions,
   ): Promise<void> {
-    const fullKey = this.buildKey(key, options?.type);
-    const cacheType = (options?.type as CacheType) || 'temp';
-    const ttl = getCacheTTL(cacheType, options?.ttl) * 1000; // 转换为毫秒
-    await this.cacheManager.set(fullKey, value, ttl);
+    try {
+      const fullKey = this.buildKey(key, options?.type);
+      const cacheType = (options?.type as CacheType) || 'temp';
+      const ttl = getCacheTTL(cacheType, options?.ttl) * 1000; // 转换为毫秒
+      await this.cacheManager.set(fullKey, value, ttl);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to set cache for key ${key}: ${(error as Error).message}`,
+        {
+          metadata: {
+            key,
+            type: options?.type,
+            operation: 'set',
+            error: (error as Error).message,
+          },
+        },
+      );
+      // 缓存失败时不抛出错误，允许业务继续执行
+    }
   }
 
   /**
    * 删除缓存
    */
   async del(key: string, options?: BaseCacheOptions): Promise<void> {
-    const fullKey = this.buildKey(key, options?.type);
-    await this.cacheManager.del(fullKey);
+    try {
+      const fullKey = this.buildKey(key, options?.type);
+      await this.cacheManager.del(fullKey);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to delete cache for key ${key}: ${(error as Error).message}`,
+        {
+          metadata: {
+            key,
+            type: options?.type,
+            operation: 'del',
+            error: (error as Error).message,
+          },
+        },
+      );
+      // 缓存删除失败时不抛出错误
+    }
   }
 
   /**
@@ -197,32 +243,5 @@ export class CacheService {
   private buildKey(key: string, type?: string): string {
     const cacheType = type || 'temp';
     return `${this.keyPrefix}:${cacheType}:${key}`;
-  }
-
-  /**
-   * 健康检查
-   */
-  async healthCheck(): Promise<{ status: string; timestamp: Date }> {
-    try {
-      const testKey = 'health_check';
-      const testValue = Date.now();
-
-      await this.set(testKey, testValue, { ttl: 10 });
-      const result = await this.get(testKey);
-      await this.del(testKey);
-
-      if (result === testValue) {
-        return { status: 'healthy', timestamp: new Date() };
-      } else {
-        return { status: 'unhealthy', timestamp: new Date() };
-      }
-    } catch (error) {
-      this.logger.error(
-        `Cache health check failed: ${(error as Error).message}`,
-        error instanceof Error ? error.stack : undefined,
-        { metadata: { operation: 'healthCheck' } },
-      );
-      return { status: 'error', timestamp: new Date() };
-    }
   }
 }

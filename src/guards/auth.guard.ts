@@ -51,25 +51,40 @@ export class JwtAuthGuard implements CanActivate {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
-      // 检查token是否在黑名单中
-      const isBlacklisted = await this.userService.isTokenBlacklisted(token);
-      if (isBlacklisted) {
-        throw new UnauthorizedException(ErrorCode.AUTH_TOKEN_EXPIRED);
+      // 检查token是否在黑名单中（缓存失败时跳过检查）
+      try {
+        const isBlacklisted = await this.userService.isTokenBlacklisted(token);
+        if (isBlacklisted) {
+          throw new UnauthorizedException(ErrorCode.AUTH_TOKEN_EXPIRED);
+        }
+      } catch (error) {
+        // 黑名单检查失败时记录日志但不阻止认证
+        console.warn('Token blacklist check failed:', error);
       }
 
-      // 检查用户是否被强制退出
+      // 检查用户是否被强制退出（缓存失败时跳过检查）
       if (payload.iat) {
-        const isForcedLogout = await this.userService.isUserForcedLogout(
-          payload.sub,
-          payload.iat * 1000, // 转换为毫秒
-        );
-        if (isForcedLogout) {
-          throw new UnauthorizedException(ErrorCode.AUTH_FORCED_LOGOUT);
+        try {
+          const isForcedLogout = await this.userService.isUserForcedLogout(
+            payload.sub,
+            payload.iat * 1000, // 转换为毫秒
+          );
+          if (isForcedLogout) {
+            throw new UnauthorizedException(ErrorCode.AUTH_FORCED_LOGOUT);
+          }
+        } catch (error) {
+          // 强制退出检查失败时记录日志但不阻止认证
+          console.warn('Force logout check failed:', error);
         }
       }
 
-      // 更新用户最后活跃时间
-      await this.userService.updateUserLastActive(payload.sub);
+      // 更新用户最后活跃时间（失败时不影响认证）
+      try {
+        await this.userService.updateUserLastActive(payload.sub);
+      } catch (error) {
+        // 更新活跃时间失败时记录日志但不阻止认证
+        console.warn('Update last active failed:', error);
+      }
 
       // 获取用户信息并附加到请求对象
       const user = await this.userService.findById(payload.sub);

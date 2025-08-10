@@ -708,6 +708,15 @@ export class ArticleQueryService {
     }
 
     if (tagIds && tagIds.length > 0) {
+      // 检查是否已经join了tags表，如果没有则添加join
+      const joinAlias = queryBuilder.expressionMap.joinAttributes.find(
+        (join) => join.alias.name === 'tags',
+      );
+
+      if (!joinAlias) {
+        queryBuilder.leftJoin('article.tags', 'tags');
+      }
+
       queryBuilder.andWhere('tags.id IN (:...tagIds)', { tagIds });
     }
 

@@ -89,6 +89,13 @@ export class CreateArticleDto extends BaseCreateDto {
   @IsString()
   coverImage?: string;
 
+  @ApiPropertyOptional({ description: '分类ID' })
+  @IsOptional()
+  @IsUUID('4', {
+    message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
+  })
+  categoryId?: string;
+
   @ApiPropertyOptional({ description: '分类ID数组', type: [String] })
   @IsOptional()
   @IsArray()
@@ -150,7 +157,25 @@ export class CreateArticleDto extends BaseCreateDto {
   @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)
+  allowComment?: boolean;
+
+  @ApiPropertyOptional({ description: '是否允许评论', default: true })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
   allowComments?: boolean;
+
+  @ApiPropertyOptional({ description: '是否置顶', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isTop?: boolean;
+
+  @ApiPropertyOptional({ description: '是否精选', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isFeatured?: boolean;
 
   @ApiPropertyOptional({
     description: '预计阅读时间（分钟）',
