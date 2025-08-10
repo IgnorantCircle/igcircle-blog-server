@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { QueryArrayTransformPipe } from '@/common/pipes/query-array-transform.pipe';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = await app.resolve(StructuredLoggerService);
@@ -24,12 +25,16 @@ async function bootstrap() {
   });
   // 全局路由前缀
   app.setGlobalPrefix('api');
-  // 全局验证管道
+  // 全局管道：先处理数组参数转换，再进行验证
   app.useGlobalPipes(
+    new QueryArrayTransformPipe(),
     new ValidationPipe({
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
