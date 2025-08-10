@@ -1,10 +1,11 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { QueryArrayTransformPipe } from '@/common/pipes/query-array-transform.pipe';
+import { BooleanTransformPipe } from '@/common/pipes/boolean-transform.pipe';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = await app.resolve(StructuredLoggerService);
@@ -25,8 +26,9 @@ async function bootstrap() {
   });
   // 全局路由前缀
   app.setGlobalPrefix('api');
-  // 全局管道：先处理数组参数转换，再进行验证
+  // 全局管道：先参数转换，再进行验证
   app.useGlobalPipes(
+    new BooleanTransformPipe(app.get(Reflector)),
     new QueryArrayTransformPipe(),
     new ValidationPipe({
       transform: true,
