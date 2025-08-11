@@ -9,7 +9,6 @@ import { NotFoundException } from '@/common/exceptions/business.exception';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { TagService } from '@/services/tag.service';
 import { Public } from '@/decorators/public.decorator';
-import { TagQueryDto } from '@/dto/tag.dto';
 import { UnifiedTagDto } from '@/dto/base/unified-response.dto';
 import { ErrorCode } from '@/common/constants/error-codes';
 import {
@@ -33,13 +32,11 @@ export class PublicTagController {
     type: [UnifiedTagDto],
   })
   async findAll(): Promise<any> {
-    const query = new TagQueryDto();
-    query.page = 1;
-    query.limit = 100;
-    query.isActive = true;
-    const result = await this.tagService.findAllPaginated(query);
+    // 使用带缓存的 findAll 方法
+    const tags = await this.tagService.findAll();
 
-    return result.items;
+    // 只返回激活的标签
+    return tags.filter((tag) => tag.isActive);
   }
 
   @Get('popular')

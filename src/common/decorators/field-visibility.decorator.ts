@@ -24,11 +24,11 @@ export interface FieldVisibilityOptions {
   /** 是否为可选字段 */
   optional?: boolean;
   /** 字段类型 */
-  type?: any;
+  type?: unknown;
   /** 示例值 */
-  example?: any;
+  example?: unknown;
   /** 转换函数 */
-  transform?: (value: any) => any;
+  transform?: (value: unknown) => unknown;
   /** 是否为数组 */
   isArray?: boolean;
 }
@@ -65,12 +65,20 @@ export function FieldVisibility(options: FieldVisibilityOptions) {
   decorators.push(Expose());
 
   // 设置 API 文档
-  const apiOptions: any = {
-    description: options.description,
-    type: options.type,
-    example: options.example,
-    isArray: options.isArray,
-  };
+  const apiOptions: any = {};
+
+  if (options.description !== undefined) {
+    apiOptions.description = options.description;
+  }
+  if (options.type !== undefined) {
+    apiOptions.type = options.type;
+  }
+  if (options.example !== undefined) {
+    apiOptions.example = options.example;
+  }
+  if (options.isArray !== undefined) {
+    apiOptions.isArray = options.isArray;
+  }
 
   if (options.optional) {
     decorators.push(ApiPropertyOptional(apiOptions));
@@ -81,15 +89,15 @@ export function FieldVisibility(options: FieldVisibilityOptions) {
   // 设置转换函数
   if (options.transform) {
     decorators.push(
-      Transform(({ value }) =>
-        (options.transform as (value: any) => any)(value),
-      ),
+      Transform(({ value }) => {
+        return (options.transform as (value: unknown) => unknown)(value);
+      }),
     );
   }
 
   // 设置类型转换
   if (options.type && !options.isArray) {
-    decorators.push(Type(() => options.type as any));
+    decorators.push(Type(() => options.type as Function));
   }
 
   return applyDecorators(...decorators);
@@ -171,7 +179,7 @@ export function ConditionalField(
       VisibilityContext.USER,
       VisibilityContext.INTERNAL,
     ],
-    transform: (value: any) => {
+    transform: (value: unknown) => {
       // 条件逻辑将在拦截器中处理
       return options.transform ? options.transform(value) : value;
     },
@@ -188,7 +196,7 @@ export function TimeField(
   return FieldVisibility({
     ...options,
     contexts,
-    transform: (value: any) => {
+    transform: (value: unknown) => {
       if (!value) return null;
       return typeof value === 'number' ? new Date(value).toISOString() : value;
     },
@@ -216,13 +224,13 @@ export function StatsField(
  * 关系字段装饰器 - 用于关联数据
  */
 export function RelationField(
-  type: any,
+  type: unknown,
   contexts: VisibilityContext[],
   options?: Partial<Omit<FieldVisibilityOptions, 'contexts' | 'type'>>,
 ) {
   return FieldVisibility({
     ...options,
-    type,
+    type: type as any,
     contexts,
   });
 }
@@ -231,7 +239,7 @@ export function RelationField(
  * 数组关系字段装饰器
  */
 export function RelationArrayField(
-  type: any,
+  type: unknown,
   contexts: VisibilityContext[],
   options?: Partial<
     Omit<FieldVisibilityOptions, 'contexts' | 'type' | 'isArray'>
@@ -239,7 +247,7 @@ export function RelationArrayField(
 ) {
   return FieldVisibility({
     ...options,
-    type,
+    type: type as any,
     contexts,
     isArray: true,
   });

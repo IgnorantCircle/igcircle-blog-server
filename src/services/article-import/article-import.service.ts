@@ -61,7 +61,7 @@ export class ArticleImportService {
     );
 
     // 初始化进度信息
-    const response = await this.importProgressService.initializeProgress(
+    const response = this.importProgressService.initializeProgress(
       taskId,
       totalFiles,
     );
@@ -490,7 +490,7 @@ export class ArticleImportService {
   }
 
   /**
-   * 清理过期的导入进度缓存
+   * 清理过期的导入进度
    */
   async cleanupExpiredProgress(): Promise<void> {
     return this.importProgressService.cleanupExpiredProgress();

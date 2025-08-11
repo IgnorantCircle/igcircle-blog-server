@@ -1,23 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { createTransport, Transporter } from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
-import { CacheService } from '@/common/cache/cache.service';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
-import {
-  BusinessException,
-  RateLimitException,
-} from '@/common/exceptions/business.exception';
+import { BusinessException } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
-import { CACHE_TYPES } from '@/common/cache/cache.config';
 
 @Injectable()
 export class EmailService {
   private transporter: Transporter;
+  private static readonly VERIFICATION_CODE_TTL = 5 * 60 * 1000; // 5分钟（毫秒）
+  private static readonly VERIFICATION_CODE_PREFIX = 'email:verification:';
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly cacheService: CacheService,
     private readonly logger: StructuredLoggerService,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {
     this.logger.setContext({ module: 'EmailService' });
     // 配置邮件传输器
@@ -43,31 +42,12 @@ export class EmailService {
    * 发送验证码邮件
    */
   async sendVerificationCode(email: string): Promise<void> {
-    // 检查是否在冷却期内
-    const cooldownKey = `email_cooldown:${email}`;
-    const lastSent = await this.cacheService.get(cooldownKey, {
-      type: CACHE_TYPES.TEMP,
-    });
-
-    if (lastSent) {
-      throw new RateLimitException('请等待60秒后再次发送验证码');
-    }
-
     // 生成验证码
     const code = this.generateVerificationCode();
 
-    // 存储验证码到缓存，有效期5分钟
-    const cacheKey = `verification_code:${email}`;
-    await this.cacheService.set(cacheKey, code, {
-      type: CACHE_TYPES.TEMP,
-      ttl: 5 * 60, // 5分钟
-    });
-
-    // 设置冷却期，60秒
-    await this.cacheService.set(cooldownKey, Date.now(), {
-      type: CACHE_TYPES.TEMP,
-      ttl: 60, // 60秒
-    });
+    // 将验证码存储到缓存中，设置5分钟过期时间
+    const cacheKey = `${EmailService.VERIFICATION_CODE_PREFIX}${email}`;
+    await this.cache.set(cacheKey, code, EmailService.VERIFICATION_CODE_TTL);
 
     // 发送邮件
     const mailOptions = {
@@ -92,7 +72,13 @@ export class EmailService {
 
     try {
       await this.transporter.sendMail(mailOptions);
+      this.logger.log('验证码邮件发送成功', {
+        action: 'sendVerificationCode',
+        metadata: { email, timestamp: new Date().toISOString() },
+      });
     } catch (error) {
+      // 发送失败时清除缓存中的验证码
+      await this.cache.del(cacheKey);
       this.logger.error(
         '发送邮件失败',
         error instanceof Error ? error.stack : undefined,
@@ -111,23 +97,57 @@ export class EmailService {
    * 验证验证码
    */
   async verifyCode(email: string, code: string): Promise<boolean> {
-    const cacheKey = `verification_code:${email}`;
-    const storedCode = await this.cacheService.get<string>(cacheKey, {
-      type: CACHE_TYPES.TEMP,
-    });
+    try {
+      const cacheKey = `${EmailService.VERIFICATION_CODE_PREFIX}${email}`;
+      const cachedCode = await this.cache.get<string>(cacheKey);
 
-    if (!storedCode) {
-      return false;
-    }
+      if (!cachedCode) {
+        this.logger.warn('验证码不存在或已过期', {
+          action: 'verifyCode',
+          metadata: { email, timestamp: new Date().toISOString() },
+        });
+        throw new BusinessException(
+          ErrorCode.EMAIL_VERIFICATION_FAILED,
+          '验证码不存在或已过期',
+        );
+      }
 
-    if (storedCode === code) {
-      // 验证成功后删除验证码
-      await this.cacheService.del(cacheKey, {
-        type: CACHE_TYPES.TEMP,
+      if (cachedCode !== code) {
+        this.logger.warn('验证码错误', {
+          action: 'verifyCode',
+          metadata: { email, timestamp: new Date().toISOString() },
+        });
+        throw new BusinessException(
+          ErrorCode.EMAIL_VERIFICATION_FAILED,
+          '验证码错误',
+        );
+      }
+
+      // 验证成功后删除缓存中的验证码，防止重复使用
+      await this.cache.del(cacheKey);
+
+      this.logger.log('验证码验证成功', {
+        action: 'verifyCode',
+        metadata: { email, timestamp: new Date().toISOString() },
       });
-      return true;
-    }
 
-    return false;
+      return true;
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+
+      this.logger.error(
+        '验证码验证失败',
+        error instanceof Error ? error.stack : String(error),
+        {
+          metadata: { email, timestamp: new Date().toISOString() },
+        },
+      );
+      throw new BusinessException(
+        ErrorCode.EMAIL_VERIFICATION_FAILED,
+        '验证码验证失败',
+      );
+    }
   }
 }

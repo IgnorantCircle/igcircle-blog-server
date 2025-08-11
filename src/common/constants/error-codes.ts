@@ -78,6 +78,7 @@ export enum ErrorCode {
   EMAIL_SEND_FAILED = 'EMAIL_001',
   EMAIL_TEMPLATE_NOT_FOUND = 'EMAIL_002',
   EMAIL_INVALID_ADDRESS = 'EMAIL_003',
+  EMAIL_VERIFICATION_FAILED = 'EMAIL_004',
 
   // 缓存相关错误 (CACHE_xxx)
   CACHE_CONNECTION_FAILED = 'CACHE_001',
@@ -171,6 +172,7 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.EMAIL_SEND_FAILED]: '邮件发送失败',
   [ErrorCode.EMAIL_TEMPLATE_NOT_FOUND]: '邮件模板不存在',
   [ErrorCode.EMAIL_INVALID_ADDRESS]: '邮箱地址无效',
+  [ErrorCode.EMAIL_VERIFICATION_FAILED]: '邮箱验证码无效或过期',
 
   // 缓存相关错误
   [ErrorCode.CACHE_CONNECTION_FAILED]: '缓存连接失败',

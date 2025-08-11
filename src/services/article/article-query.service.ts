@@ -1,13 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Article } from '@/entities/article.entity';
 import { Tag } from '@/entities/tag.entity';
 import { ArticleQueryDto, ArticleStatus } from '@/dto/article.dto';
-import { CacheService } from '@/common/cache/cache.service';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
-import { CACHE_TYPES } from '@/common/cache/cache.config';
 import { PaginationUtil } from '@/common/utils/pagination.util';
+import { BaseService } from '@/common/base/base.service';
+import { ConfigService } from '@nestjs/config';
+import { BlogCacheService } from '@/common/cache/blog-cache.service';
 
 export type ArticleQueryOptions = Omit<ArticleQueryDto, 'skip'>;
 
@@ -17,20 +18,49 @@ export interface ArticleQueryResult {
 }
 
 @Injectable()
-export class ArticleQueryService {
+export class ArticleQueryService extends BaseService<Article> {
   constructor(
     @InjectRepository(Article)
     private readonly articleRepository: Repository<Article>,
-    private readonly cacheService: CacheService,
-    private readonly logger: StructuredLoggerService,
+    @Inject(StructuredLoggerService) logger: StructuredLoggerService,
+    @Inject(ConfigService) configService: ConfigService,
+    @Inject(BlogCacheService) private readonly cacheManager: BlogCacheService,
   ) {
+    super(articleRepository, 'article', configService, logger);
     this.logger.setContext({ module: 'ArticleQueryService' });
   }
 
   /**
-   * 分页查询文章
+   * 分页查询文章（带缓存）
    */
   async findAllPaginated(
+    options: ArticleQueryOptions,
+    useCache: boolean = true,
+  ): Promise<ArticleQueryResult> {
+    const { page = 1, limit = 10 } = options;
+
+    // 如果不使用缓存或没有缓存管理器，直接执行查询
+    if (!useCache || !this.cacheManager) {
+      return this.executeQuery(options);
+    }
+
+    // 尝试从缓存获取文章列表
+    const cached = await this.cacheManager.getArticleList(page, limit);
+    if (cached) {
+      return cached as ArticleQueryResult;
+    }
+
+    // 执行查询并缓存结果
+    const result = await this.executeQuery(options);
+    await this.cacheManager.setArticleList(result, page, limit);
+
+    return result;
+  }
+
+  /**
+   * 执行实际的查询逻辑
+   */
+  private async executeQuery(
     options: ArticleQueryOptions,
   ): Promise<ArticleQueryResult> {
     const {
@@ -48,16 +78,6 @@ export class ArticleQueryService {
     } = options;
 
     const skip = PaginationUtil.calculateSkip(page, limit);
-
-    // 构建缓存键
-    const cacheKey = this.buildCacheKey('paginated', options);
-    const cached = await this.cacheService.get<{
-      items: Article[];
-      total: number;
-    }>(cacheKey, { type: CACHE_TYPES.ARTICLE });
-    if (cached) {
-      return cached;
-    }
 
     // 使用优化的查询构建器
     const queryBuilder = this.createOptimizedQueryBuilder('list');
@@ -92,15 +112,7 @@ export class ArticleQueryService {
       await this.loadTagsForArticles(items as any);
     }
 
-    const result = { items, total };
-
-    // 缓存结果
-    await this.cacheService.set(cacheKey, result, {
-      type: CACHE_TYPES.ARTICLE,
-      ttl: 300, // 5分钟
-    });
-
-    return result;
+    return { items, total };
   }
 
   /**
@@ -137,53 +149,30 @@ export class ArticleQueryService {
   async getPopularArticles(
     options: ArticleQueryOptions = {},
   ): Promise<ArticleQueryResult> {
-    const { page = 1, limit = 10 } = options;
-    const skip = PaginationUtil.calculateSkip(page, limit);
+    // 如果不使用缓存，直接执行查询
+    if (!this.cacheManager) {
+      const popularOptions: ArticleQueryOptions = {
+        ...options,
+        sortBy: 'viewCount',
+        sortOrder: 'DESC',
+      };
+      return this.executeQuery(popularOptions);
+    }
 
-    const cacheKey = this.buildCacheKey('popular', options);
-    const cached = await this.cacheService.get<{
-      items: Article[];
-      total: number;
-    }>(cacheKey, {
-      type: CACHE_TYPES.ARTICLE,
-    });
-
+    // 尝试从缓存获取热门文章
+    const cached = await this.cacheManager.getPopularArticles();
     if (cached) {
-      return cached;
+      return cached as ArticleQueryResult;
     }
 
-    // 使用统计优化的查询构建器
-    const queryBuilder = this.createOptimizedQueryBuilder('stats');
-
-    // 应用过滤条件
-    this.applyFilters(queryBuilder, options);
-
-    // 按热度排序（综合浏览量、点赞数、评论数）
-    queryBuilder
-      .addSelect(
-        '(article.viewCount * 1 + article.likeCount * 3 + article.commentCount * 5)',
-        'popularity_score',
-      )
-      .orderBy('popularity_score', 'DESC')
-      .addOrderBy('article.createdAt', 'DESC');
-
-    // 分页
-    queryBuilder.skip(skip).take(limit);
-
-    const [items, total] = await queryBuilder.getManyAndCount();
-
-    // 批量加载标签信息
-    if (items.length > 0) {
-      await this.loadTagsForArticles(items);
-    }
-
-    const result = { items, total };
-
-    // 缓存结果
-    await this.cacheService.set(cacheKey, result, {
-      type: CACHE_TYPES.ARTICLE,
-      ttl: 1800, // 30分钟
-    });
+    // 执行查询并缓存结果
+    const popularOptions: ArticleQueryOptions = {
+      ...options,
+      sortBy: 'viewCount',
+      sortOrder: 'DESC',
+    };
+    const result = await this.executeQuery(popularOptions);
+    await this.cacheManager.setPopularArticles(result);
 
     return result;
   }
@@ -194,47 +183,30 @@ export class ArticleQueryService {
   async getRecentArticles(
     options: ArticleQueryOptions = {},
   ): Promise<ArticleQueryResult> {
-    const { page = 1, limit = 10 } = options;
-    const skip = PaginationUtil.calculateSkip(page, limit);
+    // 如果不使用缓存，直接执行查询
+    if (!this.cacheManager) {
+      const recentOptions: ArticleQueryOptions = {
+        ...options,
+        sortBy: 'createdAt',
+        sortOrder: 'DESC',
+      };
+      return this.executeQuery(recentOptions);
+    }
 
-    const cacheKey = this.buildCacheKey('recent', options);
-    const cached = await this.cacheService.get<{
-      items: Article[];
-      total: number;
-    }>(cacheKey, {
-      type: CACHE_TYPES.ARTICLE,
-    });
-
+    // 尝试从缓存获取最新文章
+    const cached = await this.cacheManager.getRecentArticles();
     if (cached) {
-      return cached;
+      return cached as ArticleQueryResult;
     }
 
-    // 使用列表优化的查询构建器
-    const queryBuilder = this.createOptimizedQueryBuilder('list');
-
-    // 应用过滤条件
-    this.applyFilters(queryBuilder, options);
-
-    // 按创建时间排序
-    queryBuilder.orderBy('article.createdAt', 'DESC');
-
-    // 分页
-    queryBuilder.skip(skip).take(limit);
-
-    const [items, total] = await queryBuilder.getManyAndCount();
-
-    // 批量加载标签信息
-    if (items.length > 0) {
-      await this.loadTagsForArticles(items);
-    }
-
-    const result = { items, total };
-
-    // 缓存结果
-    await this.cacheService.set(cacheKey, result, {
-      type: CACHE_TYPES.ARTICLE,
-      ttl: 600, // 10分钟
-    });
+    // 执行查询并缓存结果
+    const recentOptions: ArticleQueryOptions = {
+      ...options,
+      sortBy: 'createdAt',
+      sortOrder: 'DESC',
+    };
+    const result = await this.executeQuery(recentOptions);
+    await this.cacheManager.setRecentArticles(result);
 
     return result;
   }
@@ -245,52 +217,32 @@ export class ArticleQueryService {
   async getFeaturedArticles(
     options: ArticleQueryOptions = {},
   ): Promise<ArticleQueryResult> {
-    const { page = 1, limit = 10 } = options;
-    const skip = PaginationUtil.calculateSkip(page, limit);
+    // 如果不使用缓存，直接执行查询
+    if (!this.cacheManager) {
+      const featuredOptions: ArticleQueryOptions = {
+        ...options,
+        isFeatured: true,
+        sortBy: 'createdAt',
+        sortOrder: 'DESC',
+      };
+      return this.executeQuery(featuredOptions);
+    }
 
-    const cacheKey = this.buildCacheKey('featured', options);
-    const cached = await this.cacheService.get<{
-      items: Article[];
-      total: number;
-    }>(cacheKey, {
-      type: CACHE_TYPES.ARTICLE,
-    });
-
+    // 尝试从缓存获取精选文章
+    const cached = await this.cacheManager.getFeaturedArticles();
     if (cached) {
-      return cached;
+      return cached as ArticleQueryResult;
     }
 
-    // 使用列表优化的查询构建器
-    const queryBuilder = this.createOptimizedQueryBuilder('list');
-
-    // 只查询精选文章
-    queryBuilder.andWhere('article.isFeatured = :isFeatured', {
+    // 执行查询并缓存结果
+    const featuredOptions: ArticleQueryOptions = {
+      ...options,
       isFeatured: true,
-    });
-
-    // 应用过滤条件
-    this.applyFilters(queryBuilder, options);
-
-    // 按创建时间排序
-    queryBuilder.orderBy('article.createdAt', 'DESC');
-
-    // 分页
-    queryBuilder.skip(skip).take(limit);
-
-    const [items, total] = await queryBuilder.getManyAndCount();
-
-    // 批量加载标签信息
-    if (items.length > 0) {
-      await this.loadTagsForArticles(items);
-    }
-
-    const result = { items, total };
-
-    // 缓存结果
-    await this.cacheService.set(cacheKey, result, {
-      type: CACHE_TYPES.ARTICLE,
-      ttl: 1800, // 30分钟
-    });
+      sortBy: 'createdAt',
+      sortOrder: 'DESC',
+    };
+    const result = await this.executeQuery(featuredOptions);
+    await this.cacheManager.setFeaturedArticles(result);
 
     return result;
   }
@@ -309,19 +261,6 @@ export class ArticleQueryService {
       sortOrder = 'DESC',
     } = options;
     const skip = PaginationUtil.calculateSkip(page, limit);
-
-    // 构建缓存键
-    const cacheKey = this.buildCacheKey('search', { keyword, ...options });
-    const cached = await this.cacheService.get<{
-      items: Article[];
-      total: number;
-    }>(cacheKey, {
-      type: CACHE_TYPES.ARTICLE,
-    });
-
-    if (cached) {
-      return cached;
-    }
 
     // 使用搜索优化的查询构建器
     const queryBuilder = this.createOptimizedQueryBuilder('search');
@@ -369,15 +308,7 @@ export class ArticleQueryService {
       await this.loadTagsForArticles(items);
     }
 
-    const result = { items, total };
-
-    // 缓存结果
-    await this.cacheService.set(cacheKey, result, {
-      type: CACHE_TYPES.ARTICLE,
-      ttl: 600, // 10分钟
-    });
-
-    return result;
+    return { items, total };
   }
 
   /**
@@ -390,15 +321,6 @@ export class ArticleQueryService {
     limit: number = 10,
   ): Promise<ArticleQueryResult> {
     const skip = PaginationUtil.calculateSkip(page, limit);
-    const cacheKey = `article:archive:${year || 'all'}:${month || 'all'}:${page}:${limit}`;
-
-    const cached = await this.cacheService.get<{
-      items: Article[];
-      total: number;
-    }>(cacheKey, { type: CACHE_TYPES.ARTICLE });
-    if (cached) {
-      return cached;
-    }
 
     const queryBuilder = this.createBaseQueryBuilder()
       .where('article.status = :status', { status: 'published' })
@@ -415,12 +337,7 @@ export class ArticleQueryService {
 
     const [items, total] = await queryBuilder.getManyAndCount();
 
-    const result = { items, total };
-    await this.cacheService.set(cacheKey, result, {
-      type: CACHE_TYPES.ARTICLE,
-    });
-
-    return result;
+    return { items, total };
   }
 
   /**
@@ -481,14 +398,6 @@ export class ArticleQueryService {
    * 获取相关文章
    */
   async getRelatedArticles(id: string, limit: number = 5): Promise<Article[]> {
-    const cacheKey = `article:related:${id}:${limit}`;
-    const cached = await this.cacheService.get<Article[]>(cacheKey, {
-      type: CACHE_TYPES.ARTICLE,
-    });
-    if (cached) {
-      return cached;
-    }
-
     // 获取当前文章信息（只查询必要字段）
     const currentArticle = await this.articleRepository.findOne({
       where: { id },
@@ -584,11 +493,6 @@ export class ArticleQueryService {
     if (result.length > 0) {
       await this.loadTagsForArticles(result);
     }
-
-    await this.cacheService.set(cacheKey, result, {
-      type: CACHE_TYPES.ARTICLE,
-      ttl: 1800, // 30分钟
-    });
 
     return result;
   }
@@ -738,16 +642,5 @@ export class ArticleQueryService {
         { keyword: `%${keyword}%` },
       );
     }
-  }
-
-  /**
-   * 构建缓存键
-   */
-  private buildCacheKey(prefix: string, options: Record<string, any>): string {
-    const sortedKeys = Object.keys(options).sort();
-    const keyParts = sortedKeys
-      .map((key) => `${key}:${options[key] as string}`)
-      .join(':');
-    return `article:${prefix}:${keyParts}`.replace(/[^a-zA-Z0-9:_-]/g, '_');
   }
 }

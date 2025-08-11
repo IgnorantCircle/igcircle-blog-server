@@ -57,36 +57,25 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '用户名或密码错误' })
   async login(@Body() loginDto: LoginDto): Promise<LoginResponseDto> {
-    const { username, password } = loginDto;
-
-    // 解密RSA加密的密码
+    // 解密密码
     let decryptedPassword: string;
     try {
-      decryptedPassword = this.rsaService.decrypt(password);
+      decryptedPassword = this.rsaService.decrypt(loginDto.password);
     } catch {
-      throw new BusinessException(
-        ErrorCode.AUTH_RSA_DECRYPT_FAILED,
-        '密码解密失败，请刷新页面重试',
-      );
+      throw new ValidationException('密码格式错误', [
+        { field: 'password', message: '密码格式错误' },
+      ]);
     }
 
-    // 查找用户（支持用户名或邮箱登录）
-    let user: User | null = null;
+    // 查找用户
+    let user: User;
     try {
-      if (username.includes('@')) {
-        user = await this.userService.findByEmail(username);
-      } else {
-        user = await this.userService.findByUsername(username);
-      }
-
-      if (!user) {
-        throw new UnauthorizedException(
-          ErrorCode.USER_INVALID_CREDENTIALS,
-          '用户名或密码错误',
-        );
-      }
+      user = await this.userService.findByUsername(loginDto.username);
     } catch {
-      throw new UnauthorizedException(ErrorCode.USER_INVALID_CREDENTIALS);
+      throw new UnauthorizedException(
+        ErrorCode.USER_INVALID_CREDENTIALS,
+        '用户名或密码错误',
+      );
     }
 
     // 验证密码
@@ -102,37 +91,35 @@ export class AuthController {
     }
 
     // 检查用户状态
-    if (user.status !== UserStatus.ACTIVE.toString()) {
+    if (user.status !== 'active') {
       throw new UnauthorizedException(
         ErrorCode.USER_ACCOUNT_DISABLED,
-        '账户已被禁用',
+        '用户账户已被禁用',
       );
     }
 
-    // 生成JWT令牌
+    // 生成JWT token
     const payload = {
       sub: user.id,
       username: user.username,
       email: user.email,
       role: user.role,
     };
+    const accessToken = this.jwtService.sign(payload);
 
-    const access_token = await this.jwtService.signAsync(payload);
-
-    const result: LoginResponseDto = {
+    return {
       success: true,
       message: '登录成功',
-      accessToken: access_token,
+      accessToken,
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
-        nickname: user.nickname,
         role: user.role,
+        nickname: user.nickname,
+        avatar: user.avatar,
       },
     };
-
-    return result;
   }
 
   @Post('admin/login')
@@ -143,16 +130,9 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '用户名或密码错误' })
   async adminLogin(@Body() loginDto: LoginDto): Promise<LoginResponseDto> {
+    // 管理员登录逻辑与普通用户相同，但可能有额外的权限检查
     const result = await this.login(loginDto);
-
-    // 检查是否为管理员
-    if (result.user?.role !== 'admin') {
-      throw new UnauthorizedException(
-        ErrorCode.AUTH_PERMISSION_DENIED,
-        '权限不足，需要管理员权限',
-      );
-    }
-
+    // 这里可以添加管理员特定的逻辑
     return result;
   }
 
@@ -170,21 +150,21 @@ export class AuthController {
   async sendVerificationCode(
     @Body() sendCodeDto: SendVerificationCodeDto,
   ): Promise<VerificationCodeResponseDto> {
-    // 检查邮箱是否已被注册
-    const existingUser = await this.userService.findByEmail(sendCodeDto.email);
-    if (existingUser) {
+    try {
+      await this.emailService.sendVerificationCode(sendCodeDto.email);
+      return {
+        success: true,
+        message: '验证码已发送到您的邮箱，请查收',
+      };
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
       throw new BusinessException(
-        ErrorCode.USER_ALREADY_EXISTS,
-        '该邮箱已被注册',
+        ErrorCode.EMAIL_SEND_FAILED,
+        '发送验证码失败，请稍后重试',
       );
     }
-
-    await this.emailService.sendVerificationCode(sendCodeDto.email);
-
-    return {
-      message: '验证码已发送到您的邮箱，请查收',
-      success: true,
-    };
   }
 
   @Post('register')
@@ -207,36 +187,50 @@ export class AuthController {
       registerDto.email,
       registerDto.verificationCode,
     );
-
     if (!isCodeValid) {
-      throw new ValidationException('验证码无效或已过期');
+      throw new ValidationException('验证码错误或已过期', [
+        { field: 'verificationCode', message: '验证码错误或已过期' },
+      ]);
     }
 
     // 解密密码
-    const decryptedPassword = this.rsaService.decrypt(registerDto.password);
+    let decryptedPassword: string;
+    try {
+      decryptedPassword = this.rsaService.decrypt(registerDto.password);
+    } catch {
+      throw new ValidationException('密码格式错误', [
+        { field: 'password', message: '密码格式错误' },
+      ]);
+    }
 
-    // 创建用户DTO
+    // 创建用户
     const createUserDto: CreateUserDto = {
-      name: registerDto.username, // 使用用户名作为显示名称
       username: registerDto.username,
       email: registerDto.email,
       password: decryptedPassword,
     };
 
-    // 创建用户
-    const user = await this.userService.create(createUserDto);
-
-    return {
-      success: true,
-      message: '注册成功',
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        nickname: user.nickname,
-        role: user.role,
-      },
-    };
+    try {
+      const user = await this.userService.create(createUserDto);
+      return {
+        success: true,
+        message: '注册成功',
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+        },
+      };
+    } catch (error) {
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      throw new BusinessException(
+        ErrorCode.USER_ALREADY_EXISTS,
+        '注册失败，请稍后重试',
+      );
+    }
   }
 
   @Post('logout')
@@ -251,27 +245,26 @@ export class AuthController {
   @ApiResponse({ status: 401, description: '未授权访问' })
   async logout(@Request() req: ExpressRequest): Promise<LogoutResponseDto> {
     const token = this.extractTokenFromHeader(req);
-
     if (token) {
-      // 解析token获取过期时间
       try {
-        const decoded: unknown = this.jwtService.decode(token);
+        const decoded = this.jwtService.decode(token);
         if (
           decoded &&
           typeof decoded === 'object' &&
-          decoded !== null &&
-          'exp' in decoded
+          'exp' in decoded &&
+          typeof decoded.exp === 'number'
         ) {
           const now = Math.floor(Date.now() / 1000);
-          const expiresIn = (decoded as { exp: number }).exp - now;
+          const expiresIn = decoded.exp - now;
 
           if (expiresIn > 0) {
             // 将token添加到黑名单
             await this.userService.blacklistToken(token, expiresIn);
           }
         }
-      } catch {
+      } catch (error) {
         // 如果token解析失败，忽略错误（可能已经是无效token）
+        // 可以在这里记录日志用于调试
       }
     }
 
@@ -304,9 +297,7 @@ export class AuthController {
   }
 
   private extractTokenFromHeader(request: ExpressRequest): string | undefined {
-    const authHeader = request.headers.authorization;
-    if (!authHeader) return undefined;
-    const [type, token] = authHeader.split(' ');
+    const [type, token] = request.headers.authorization?.split(' ') ?? [];
     return type === 'Bearer' ? token : undefined;
   }
 }

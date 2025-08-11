@@ -10,7 +10,6 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { CategoryService } from '@/services/category.service';
 import { Public } from '@/decorators/public.decorator';
 import { UnifiedCategoryDto } from '@/dto/base/unified-response.dto';
-import { CategoryQueryDto } from '@/dto/category.dto';
 import { ErrorCode } from '@/common/constants/error-codes';
 import {
   FieldVisibilityInterceptor,
@@ -33,13 +32,11 @@ export class PublicCategoryController {
     type: [UnifiedCategoryDto],
   })
   async findAll(): Promise<any> {
-    const query = new CategoryQueryDto();
-    query.page = 1;
-    query.limit = 100;
-    query.isActive = true;
-    const result = await this.categoryService.findAllPaginated(query);
+    // 使用带缓存的 findAll 方法
+    const categories = await this.categoryService.findAll();
 
-    return result.items;
+    // 只返回激活的分类
+    return categories.filter((category) => category.isActive);
   }
 
   @Get(':id')

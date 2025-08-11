@@ -1,7 +1,7 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware, Inject } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { ConfigService } from '@nestjs/config';
-import { CacheService } from '../cache/cache.service';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { StructuredLoggerService } from '../logger/structured-logger.service';
 import { RateLimitException } from '../exceptions/business.exception';
 interface RateLimitOptions {
@@ -24,37 +24,81 @@ export class RateLimitMiddleware implements NestMiddleware {
     max: 10, // 认证相关接口每分钟最多5个请求
   };
 
+  // 缓存键前缀
+  private readonly CACHE_PREFIX = 'rate_limit:';
+
   constructor(
-    private readonly configService: ConfigService,
-    private readonly cacheService: CacheService,
     private readonly logger: StructuredLoggerService,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {
     this.logger.setContext({ module: 'RateLimitMiddleware' });
   }
 
-  async use(req: Request, res: Response, next: NextFunction) {
+  async use(req: Request, res: Response, next: NextFunction): Promise<void> {
+    // 使用 originalUrl 来获取完整的请求路径
+    const fullPath = (req.originalUrl || req.url).split('?')[0]; // 移除查询参数
+
     const ip = this.getClientIp(req);
-    const userAgent = req.get('User-Agent') || 'unknown';
-    const key = `${ip}:${userAgent}`;
+    // 将路径包含在键中，确保不同路径有独立的限流计数器
+    // 移除User-Agent以避免缓存键不匹配问题
+    const key = `${ip}:${fullPath}`;
 
     // 根据路由选择不同的限制策略
-    const options = this.getOptionsForRoute(req.path);
+    // 使用 req.url 而不是 req.path 来获取完整路径
+    const options = this.getOptionsForRoute(fullPath);
+
+    // 添加调试日志
+    this.logger.debug('限流中间件执行', {
+      action: 'rate_limit_middleware_execute',
+      metadata: {
+        ip,
+        path: req.path,
+        key,
+        options,
+      },
+    });
 
     try {
-      // 使用新的缓存策略获取当前计数
-      const current =
-        (await this.cacheService.get<number>(key, { type: 'stats' })) || 0;
+      // 使用缓存获取当前计数
+      const now = Date.now();
+      const cacheKey = `${this.CACHE_PREFIX}${key}`;
 
-      if (current >= options.max) {
+      const record = await this.getRateLimitRecord(cacheKey);
+
+      // 如果记录不存在或已过期，重置计数
+      if (!record || now > record.resetTime) {
+        await this.setRateLimitRecord(
+          cacheKey,
+          {
+            count: 1,
+            resetTime: now + options.windowMs,
+          },
+          options.windowMs,
+        );
+
+        // 设置响应头
+        const headers = {
+          'X-RateLimit-Limit': options.max.toString(),
+          'X-RateLimit-Remaining': (options.max - 1).toString(),
+          'X-RateLimit-Reset': new Date(now + options.windowMs).toISOString(),
+        };
+        // console.log('设置限流响应头（首次请求）:', headers);
+        res.set(headers);
+
+        next();
+        return;
+      }
+
+      if (record.count >= options.max) {
         // 记录安全日志
         this.logger.security('请求频率超限', 'warn', {
           ip,
           url: req.path,
-          userAgent,
+          userAgent: req.get('User-Agent') || 'unknown',
           metadata: {
             event: 'rate_limit_exceeded',
             severity: 'medium',
-            current,
+            current: record.count,
             limit: options.max,
             windowMs: options.windowMs,
           },
@@ -73,20 +117,22 @@ export class RateLimitMiddleware implements NestMiddleware {
       }
 
       // 增加计数
-      await this.cacheService.set(key, current + 1, {
-        type: 'stats',
-        ttl: Math.ceil(options.windowMs / 1000),
-      });
+      record.count += 1;
+      await this.setRateLimitRecord(
+        cacheKey,
+        record,
+        Math.max(1000, record.resetTime - now),
+      );
 
       // 设置响应头
-      const remaining = Math.max(0, options.max - current - 1);
-      res.set({
+      const remaining = Math.max(0, options.max - record.count);
+      const headers = {
         'X-RateLimit-Limit': options.max.toString(),
         'X-RateLimit-Remaining': remaining.toString(),
-        'X-RateLimit-Reset': new Date(
-          Date.now() + options.windowMs,
-        ).toISOString(),
-      });
+        'X-RateLimit-Reset': new Date(record.resetTime).toISOString(),
+      };
+
+      res.set(headers);
 
       // 记录访问日志（仅在接近限制时）
       if (remaining <= 5) {
@@ -95,8 +141,8 @@ export class RateLimitMiddleware implements NestMiddleware {
           resource: req.path,
           metadata: {
             ip,
-            userAgent,
-            current: current + 1,
+            userAgent: req.get('User-Agent') || 'unknown',
+            current: record.count,
             limit: options.max,
             remaining,
           },
@@ -118,7 +164,7 @@ export class RateLimitMiddleware implements NestMiddleware {
           resource: req.path,
           metadata: {
             ip,
-            userAgent,
+            userAgent: req.get('User-Agent') || 'unknown',
             error: error instanceof Error ? error.message : String(error),
           },
         },
@@ -153,6 +199,54 @@ export class RateLimitMiddleware implements NestMiddleware {
 
     const config = routeConfigs[path] || {};
     return { ...this.defaultOptions, ...config };
+  }
+
+  /**
+   * 从缓存获取限流记录
+   */
+  private async getRateLimitRecord(
+    cacheKey: string,
+  ): Promise<{ count: number; resetTime: number } | null> {
+    try {
+      const record = await this.cache.get(cacheKey);
+      if (record && typeof record === 'object') {
+        return record as { count: number; resetTime: number };
+      }
+      return null;
+    } catch (error) {
+      this.logger.error(
+        '获取限流记录失败',
+        error instanceof Error ? error.stack : undefined,
+        {
+          action: 'get_rate_limit_record_error',
+          metadata: { cacheKey },
+        },
+      );
+      return null;
+    }
+  }
+
+  /**
+   * 设置限流记录到缓存
+   */
+  private async setRateLimitRecord(
+    cacheKey: string,
+    record: { count: number; resetTime: number },
+    ttlMs: number,
+  ): Promise<void> {
+    try {
+      await this.cache.set(cacheKey, record, ttlMs);
+    } catch (error) {
+      // console.log('缓存设置错误:', error);
+      this.logger.error(
+        '设置限流记录失败',
+        error instanceof Error ? error.stack : undefined,
+        {
+          action: 'set_rate_limit_record_error',
+          metadata: { cacheKey, ttlMs },
+        },
+      );
+    }
   }
 }
 

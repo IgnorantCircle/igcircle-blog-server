@@ -12,6 +12,7 @@ import {
   BatchUpdateArticleDto,
   BatchExportArticleDto,
   BatchPublishArticleDto,
+  ArticleStatus,
 } from '@/dto/article.dto';
 import { BaseService } from '@/common/base/base.service';
 import { SlugUtil } from '@/common/utils/slug.util';
@@ -21,10 +22,10 @@ import {
   ArticleQueryOptions,
 } from './article-query.service';
 import { ArticleStatusService } from './article-status.service';
-import { CACHE_TYPES } from '@/common/cache/cache.config';
-import { CacheService } from '@/common/cache/cache.service';
+
 import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { BlogCacheService } from '@/common/cache/blog-cache.service';
 
 @Injectable()
 export class ArticleService extends BaseService<Article> {
@@ -38,11 +39,13 @@ export class ArticleService extends BaseService<Article> {
     private readonly articleQueryService: ArticleQueryService,
     @Inject(ArticleStatusService)
     private readonly articleStatusService: ArticleStatusService,
-    @Inject(CacheService) cacheService: CacheService,
+    @Inject(BlogCacheService)
+    private readonly blogCacheService: BlogCacheService,
+
     @Inject(ConfigService) configService: ConfigService,
     @Inject(StructuredLoggerService) logger: StructuredLoggerService,
   ) {
-    super(articleRepository, 'article', cacheService, configService, logger);
+    super(articleRepository, 'article', configService, logger);
   }
 
   // 创建文章
@@ -95,16 +98,6 @@ export class ArticleService extends BaseService<Article> {
 
         const savedArticle = await manager.save(article);
 
-        // 缓存文章
-        await Promise.all([
-          this.cacheService.set(savedArticle.id, savedArticle, {
-            type: CACHE_TYPES.ARTICLE,
-          }),
-          this.cacheService.set(`slug:${savedArticle.slug}`, savedArticle, {
-            type: CACHE_TYPES.ARTICLE,
-          }),
-        ]);
-
         return savedArticle;
       });
     } else {
@@ -112,33 +105,12 @@ export class ArticleService extends BaseService<Article> {
       const article = this.repository.create(entityData);
       const savedArticle = await this.repository.save(article);
 
-      // 缓存文章
-      if (savedArticle.id && savedArticle.slug) {
-        await Promise.all([
-          this.cacheService.set(savedArticle.id, savedArticle, {
-            type: CACHE_TYPES.ARTICLE,
-          }),
-          this.cacheService.set(`slug:${savedArticle.slug}`, savedArticle, {
-            type: CACHE_TYPES.ARTICLE,
-          }),
-        ]);
-      }
-
       return savedArticle;
     }
   }
 
   // 根据ID查找文章
-  async findById(id: string, useCache: boolean = true): Promise<Article> {
-    if (useCache) {
-      const cached = await this.cacheService.get<Article>(id, {
-        type: this.entityName,
-      });
-      if (cached) {
-        return cached;
-      }
-    }
-
+  async findById(id: string): Promise<Article> {
     const article = await this.articleRepository.findOne({
       where: { id },
       relations: ['author', 'tags', 'category'],
@@ -148,24 +120,10 @@ export class ArticleService extends BaseService<Article> {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
-    if (useCache) {
-      await this.cacheService.set(id, article, {
-        type: CACHE_TYPES.ARTICLE,
-      });
-    }
-
     return article;
   }
 
   async findBySlug(slug: string): Promise<Article> {
-    // 先尝试从缓存获取
-    const cached = await this.cacheService.get<Article>(`slug:${slug}`, {
-      type: CACHE_TYPES.ARTICLE,
-    });
-    if (cached) {
-      return cached;
-    }
-
     const article = await this.articleRepository.findOne({
       where: { slug },
       relations: ['author', 'tags', 'category'],
@@ -174,16 +132,6 @@ export class ArticleService extends BaseService<Article> {
     if (!article) {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
-
-    // 缓存文章（同时缓存ID和slug）
-    await Promise.all([
-      this.cacheService.set(article.id, article, {
-        type: CACHE_TYPES.ARTICLE,
-      }),
-      this.cacheService.set(`slug:${slug}`, article, {
-        type: CACHE_TYPES.ARTICLE,
-      }),
-    ]);
 
     return article;
   }
@@ -218,7 +166,7 @@ export class ArticleService extends BaseService<Article> {
     id: string,
     updateDataOrDto: Partial<Article> | UpdateArticleDto,
   ): Promise<Article> {
-    const article = await this.findById(id, false);
+    const article = await this.findById(id);
 
     // 判断是否为UpdateArticleDto类型
     const isUpdateDto =
@@ -286,16 +234,6 @@ export class ArticleService extends BaseService<Article> {
 
     const savedArticle = await this.repository.save(updatedArticle);
 
-    // 更新缓存（包含slug缓存）
-    await Promise.all([
-      this.cacheService.set(savedArticle.id, savedArticle, {
-        type: CACHE_TYPES.ARTICLE,
-      }),
-      this.cacheService.set(`slug:${savedArticle.slug}`, savedArticle, {
-        type: CACHE_TYPES.ARTICLE,
-      }),
-    ]);
-
     return savedArticle;
   }
 
@@ -315,15 +253,8 @@ export class ArticleService extends BaseService<Article> {
   }
 
   async remove(id: string): Promise<void> {
-    const article = await this.findById(id);
+    await this.findById(id);
     await this.articleRepository.softDelete(id);
-
-    // 清除缓存
-    await this.clearArticleCache(id, article.slug);
-
-    // 清除相关缓存
-    await this.cacheService.clearCacheByPattern('articles:*');
-    await this.cacheService.clearCacheByPattern('article:stats:*');
   }
 
   async getPopular(limit: number = 10): Promise<Article[]> {
@@ -369,11 +300,6 @@ export class ArticleService extends BaseService<Article> {
 
   async batchRemove(ids: string[]): Promise<void> {
     await this.articleRepository.delete(ids);
-
-    // 清除缓存
-    for (const id of ids) {
-      await this.clearArticleCache(id);
-    }
   }
 
   async batchPublish(ids: string[]): Promise<void> {
@@ -396,12 +322,12 @@ export class ArticleService extends BaseService<Article> {
     }
 
     return this.dataSource.transaction(async (manager) => {
-      const updateFields: any = {};
+      const updateFields: Partial<Article> = {};
 
       // 处理基本字段更新
       if (updateData.status !== undefined) {
         updateFields.status = updateData.status;
-        if (updateData.status === 'published') {
+        if (updateData.status === ArticleStatus.PUBLISHED) {
           updateFields.publishedAt = new Date();
         }
       }
@@ -445,9 +371,6 @@ export class ArticleService extends BaseService<Article> {
           }
         }
       }
-
-      // 清除缓存
-      await Promise.all(ids.map((id) => this.clearArticleCache(id)));
     });
   }
 
@@ -479,11 +402,6 @@ export class ArticleService extends BaseService<Article> {
         updatedAt: new Date(),
       },
     );
-
-    // 清除相关缓存
-    await Promise.all(
-      publishableArticles.map((article) => this.clearArticleCache(article.id)),
-    );
   }
 
   async batchExport(exportDto: BatchExportArticleDto): Promise<any> {
@@ -498,7 +416,7 @@ export class ArticleService extends BaseService<Article> {
       includeCategory = true,
     } = exportDto;
 
-    let queryBuilder = this.articleRepository
+    const queryBuilder = this.articleRepository
       .createQueryBuilder('article')
       .leftJoinAndSelect('article.author', 'author')
       .select([
@@ -590,15 +508,33 @@ export class ArticleService extends BaseService<Article> {
       '发布时间',
     ];
 
-    const rows = articles.map((article) => [
+    interface ArticleWithRelations {
+      id: string;
+      title: string;
+      summary?: string;
+      slug: string;
+      status: string;
+      author?: { username?: string };
+      category?: { name?: string };
+      tags?: { name?: string }[];
+      readingTime?: number;
+      viewCount?: number;
+      likeCount?: number;
+      isFeatured?: boolean;
+      isTop?: boolean;
+      createdAt?: Date;
+      publishedAt?: Date;
+    }
+
+    const rows = (articles as ArticleWithRelations[]).map((article) => [
       article.id,
       `"${article.title.replace(/"/g, '""')}"`,
       `"${(article.summary || '').replace(/"/g, '""')}"`,
       article.slug,
       article.status,
-      (article as any).author?.username || '',
-      (article as any).category?.name || '',
-      (article as any).tags?.map((tag: any) => tag.name).join(';') || '',
+      article.author?.username || '',
+      article.category?.name || '',
+      article.tags?.map((tag) => tag.name).join(';') || '',
       article.readingTime || 0,
       article.viewCount || 0,
       article.likeCount || 0,
@@ -612,7 +548,20 @@ export class ArticleService extends BaseService<Article> {
   }
 
   private convertToMarkdown(articles: Article[]): string {
-    return articles
+    interface ArticleWithRelations {
+      id: string;
+      title: string;
+      summary?: string;
+      status: string;
+      author?: { username?: string };
+      category?: { name?: string };
+      tags?: { name?: string }[];
+      content?: string;
+      createdAt?: Date;
+      publishedAt?: Date;
+    }
+
+    return (articles as ArticleWithRelations[])
       .map((article) => {
         let markdown = `# ${article.title}\n\n`;
 
@@ -621,14 +570,14 @@ export class ArticleService extends BaseService<Article> {
         }
 
         markdown += `**状态**: ${article.status}\n`;
-        markdown += `**作者**: ${(article as any).author?.username || '未知'}\n`;
+        markdown += `**作者**: ${article.author?.username || '未知'}\n`;
 
-        if ((article as any).category) {
-          markdown += `**分类**: ${(article as any).category.name}\n`;
+        if (article.category) {
+          markdown += `**分类**: ${article.category.name}\n`;
         }
 
-        if ((article as any).tags && (article as any).tags.length > 0) {
-          markdown += `**标签**: ${(article as any).tags.map((tag: any) => tag.name).join(', ')}\n`;
+        if (article.tags && article.tags.length > 0) {
+          markdown += `**标签**: ${article.tags.map((tag) => tag.name).join(', ')}\n`;
         }
 
         markdown += `**创建时间**: ${article.createdAt?.toISOString() || ''}\n`;
@@ -637,8 +586,8 @@ export class ArticleService extends BaseService<Article> {
           markdown += `**发布时间**: ${article.publishedAt.toISOString()}\n`;
         }
 
-        if ((article as any).content) {
-          markdown += `\n---\n\n${(article as any).content}`;
+        if (article.content) {
+          markdown += `\n---\n\n${article.content}`;
         }
 
         return markdown;
@@ -649,8 +598,10 @@ export class ArticleService extends BaseService<Article> {
   async getFeatured(limit: number = 10): Promise<Article[]> {
     const result = await this.articleQueryService.getFeaturedArticles({
       limit,
+      status: ArticleStatus.PUBLISHED,
     });
-    return result.items;
+    // 过滤出可见的文章
+    return result.items.filter((article) => article.isVisible);
   }
 
   async search(searchDto: {
@@ -746,16 +697,6 @@ export class ArticleService extends BaseService<Article> {
     const updatedArticle = this.repository.merge(article, filteredUpdateData);
     const savedArticle = await this.repository.save(updatedArticle);
 
-    // 更新缓存
-    await Promise.all([
-      this.cacheService.set(savedArticle.id, savedArticle, {
-        type: CACHE_TYPES.ARTICLE,
-      }),
-      this.cacheService.set(`slug:${savedArticle.slug}`, savedArticle, {
-        type: CACHE_TYPES.ARTICLE,
-      }),
-    ]);
-
     return savedArticle;
   }
 
@@ -769,28 +710,6 @@ export class ArticleService extends BaseService<Article> {
 
   async removeByAuthor(id: string, authorId: string): Promise<void> {
     return this.articleStatusService.removeByAuthor(id, authorId);
-  }
-
-  private async clearArticleCache(id: string, slug?: string): Promise<void> {
-    const promises = [this.cacheService.del(id)];
-
-    if (slug) {
-      promises.push(this.cacheService.del(`slug:${slug}`));
-    }
-
-    // 清除相关的列表缓存
-    promises.push(
-      this.cacheService.clearCacheByPattern('articles:*'),
-      this.cacheService.clearCacheByPattern('article:stats:*'),
-    );
-
-    try {
-      await Promise.all(promises);
-    } catch (error) {
-      this.logger.warn('清除文章缓存失败', {
-        metadata: { articleId: id, slug, error: error as string },
-      });
-    }
   }
 
   // 获取文章的浏览历史统计

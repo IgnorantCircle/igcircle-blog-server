@@ -1,6 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { CacheService } from '@/common/cache/cache.service';
-import { CACHE_TYPES } from '@/common/cache/cache.config';
 import {
   ImportProgressDto,
   ImportStatus,
@@ -10,28 +8,23 @@ import { StructuredLoggerService } from '@/common/logger/structured-logger.servi
 
 @Injectable()
 export class ImportProgressService {
-  // 常量定义
-  private static readonly CACHE_TTL = 3600000; // 1小时
-  private static readonly PROGRESS_CACHE_PREFIX = 'import_progress_';
+  // 内存存储进度信息
+  private progressStore = new Map<string, ImportProgressDto>();
 
-  constructor(
-    private readonly cacheService: CacheService,
-    private readonly logger: StructuredLoggerService,
-  ) {}
+  constructor(private readonly logger: StructuredLoggerService) {}
 
   /**
    * 初始化导入进度
    */
-  async initializeProgress(
+  initializeProgress(
     taskId: string,
     totalFiles: number,
-  ): Promise<StartImportResponseDto> {
+  ): StartImportResponseDto {
     this.logger.log(`初始化导入任务 ${taskId}，共 ${totalFiles} 个文件`, {
       metadata: { taskId, totalFiles },
     });
 
-    // 初始化进度信息
-    const initialProgress: ImportProgressDto = {
+    const progress: ImportProgressDto = {
       taskId,
       status: ImportStatus.PENDING,
       totalFiles,
@@ -39,58 +32,37 @@ export class ImportProgressService {
       successCount: 0,
       failureCount: 0,
       skippedCount: 0,
+      currentFile: '',
       progress: 0,
       startTime: Date.now(),
+      estimatedTimeRemaining: 0,
     };
 
-    // 存储进度信息到缓存
-    await this.cacheService.set(
-      `${ImportProgressService.PROGRESS_CACHE_PREFIX}${taskId}`,
-      initialProgress,
-      {
-        type: CACHE_TYPES.TEMP,
-        ttl: ImportProgressService.CACHE_TTL / 1000, // 转换为秒
-      },
-    );
+    this.progressStore.set(taskId, progress);
 
     return {
       taskId,
       status: ImportStatus.PENDING,
       totalFiles,
-      message: '导入任务已开始，请使用任务ID查询进度',
+      message: '导入任务已创建',
     };
   }
 
   /**
    * 获取导入进度
    */
-  async getImportProgress(taskId: string): Promise<ImportProgressDto | null> {
-    const progress = await this.cacheService.get<ImportProgressDto>(
-      `${ImportProgressService.PROGRESS_CACHE_PREFIX}${taskId}`,
-      { type: CACHE_TYPES.TEMP },
-    );
-    return progress || null;
+  getImportProgress(taskId: string): ImportProgressDto | null {
+    return this.progressStore.get(taskId) || null;
   }
 
   /**
    * 更新进度信息
    */
-  async updateProgress(
-    taskId: string,
-    updates: Partial<ImportProgressDto>,
-  ): Promise<void> {
-    const cacheKey = `${ImportProgressService.PROGRESS_CACHE_PREFIX}${taskId}`;
-    const currentProgress = await this.cacheService.get<ImportProgressDto>(
-      cacheKey,
-      { type: CACHE_TYPES.TEMP },
-    );
-
-    if (currentProgress) {
-      const updatedProgress = { ...currentProgress, ...updates };
-      await this.cacheService.set(cacheKey, updatedProgress, {
-        type: CACHE_TYPES.TEMP,
-        ttl: ImportProgressService.CACHE_TTL / 1000, // 转换为秒
-      });
+  updateProgress(taskId: string, updates: Partial<ImportProgressDto>): void {
+    const current = this.progressStore.get(taskId);
+    if (current) {
+      const updated = { ...current, ...updates };
+      this.progressStore.set(taskId, updated);
     }
   }
 
@@ -224,59 +196,30 @@ export class ImportProgressService {
   /**
    * 取消导入任务
    */
-  async cancelImportTask(taskId: string): Promise<boolean> {
-    try {
-      const cacheKey = `${ImportProgressService.PROGRESS_CACHE_PREFIX}${taskId}`;
-      const progress = await this.cacheService.get<ImportProgressDto>(
-        cacheKey,
-        { type: CACHE_TYPES.TEMP },
-      );
-
-      if (progress && progress.status === ImportStatus.PROCESSING) {
-        await this.updateProgress(taskId, {
-          status: ImportStatus.FAILED,
-          error: '任务已被用户取消',
-        });
-        this.logger.log(`导入任务 ${taskId} 已被取消`, {
-          metadata: { taskId },
-        });
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      this.logger.error(
-        `取消导入任务 ${taskId} 失败`,
-        error instanceof Error ? error.stack : undefined,
-        {
-          metadata: {
-            taskId,
-            error: error instanceof Error ? error.message : '未知错误',
-          },
-        },
-      );
-      return false;
+  cancelImportTask(taskId: string): boolean {
+    const progress = this.progressStore.get(taskId);
+    if (progress) {
+      progress.status = ImportStatus.FAILED;
+      this.progressStore.set(taskId, progress);
+      return true;
     }
+    return false;
   }
 
   /**
-   * 清理过期的导入进度缓存
+   * 清理过期的导入进度
    */
-  async cleanupExpiredProgress(): Promise<void> {
-    try {
-      // 这里可以实现清理逻辑，具体实现取决于缓存管理器的能力
-      this.logger.log('清理过期的导入进度缓存');
-      await Promise.resolve();
-    } catch (error) {
-      this.logger.error(
-        '清理过期缓存失败',
-        error instanceof Error ? error.stack : undefined,
-        {
-          metadata: {
-            error: error instanceof Error ? error.message : '未知错误',
-          },
-        },
-      );
+  cleanupExpiredProgress(): void {
+    const now = Date.now();
+    const expiredTasks: string[] = [];
+
+    for (const [taskId, progress] of this.progressStore.entries()) {
+      // 清理超过1小时的任务
+      if (now - progress.startTime > 3600000) {
+        expiredTasks.push(taskId);
+      }
     }
+
+    expiredTasks.forEach((taskId) => this.progressStore.delete(taskId));
   }
 }

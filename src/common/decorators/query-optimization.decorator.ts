@@ -4,13 +4,6 @@ import { PaginationUtil } from '@/common/utils/pagination.util';
 
 // 查询优化选项
 export interface QueryOptimizationOptions {
-  // 缓存配置
-  cache?: {
-    enabled: boolean;
-    ttl?: number; // 缓存时间（秒）
-    key?: string; // 缓存键模板
-  };
-
   // 分页配置
   pagination?: {
     enabled?: boolean;
@@ -45,19 +38,6 @@ export const QUERY_OPTIMIZATION_KEY = 'query_optimization';
  */
 export function QueryOptimization(options: QueryOptimizationOptions) {
   return applyDecorators(SetMetadata(QUERY_OPTIMIZATION_KEY, options));
-}
-
-/**
- * 缓存查询装饰器
- */
-export function CacheQuery(ttl: number = 300, key?: string) {
-  return QueryOptimization({
-    cache: {
-      enabled: true,
-      ttl,
-      key,
-    },
-  });
 }
 
 /**
@@ -141,11 +121,6 @@ export class QueryBuilderOptimizer {
           );
         }
       });
-    }
-
-    // 应用缓存
-    if (options.cache?.enabled) {
-      queryBuilder.cache(options.cache.ttl ? options.cache.ttl * 1000 : 300000);
     }
 
     // 应用查询超时

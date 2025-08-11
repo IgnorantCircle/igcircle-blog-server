@@ -40,6 +40,12 @@ export class User {
   @Column({ type: 'enum', enum: ['user', 'admin'], default: 'user' })
   role: string;
 
+  @Column({ type: 'timestamp', nullable: true })
+  lastActiveAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  forcedLogoutAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;
 

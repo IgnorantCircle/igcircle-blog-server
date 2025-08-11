@@ -18,12 +18,10 @@ import {
 } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
 import { BaseService } from '@/common/base/base.service';
-import { CACHE_TYPES } from '@/common/cache/cache.config';
-import { CacheService } from '@/common/cache/cache.service';
+
 import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { PaginationUtil } from '@/common/utils/pagination.util';
-
 @Injectable()
 export class CommentService extends BaseService<Comment> {
   constructor(
@@ -33,11 +31,11 @@ export class CommentService extends BaseService<Comment> {
     private commentLikeRepository: Repository<CommentLike>,
     @InjectRepository(Article)
     private articleRepository: Repository<Article>,
-    @Inject(CacheService) cacheService: CacheService,
+
     @Inject(ConfigService) configService: ConfigService,
     @Inject(StructuredLoggerService) logger: StructuredLoggerService,
   ) {
-    super(commentRepository, 'comment', cacheService, configService, logger);
+    super(commentRepository, 'comment', configService, logger);
     this.logger.setContext({ module: 'CommentService' });
   }
 
@@ -111,9 +109,6 @@ export class CommentService extends BaseService<Comment> {
     if (parentId) {
       await this.commentRepository.increment({ id: parentId }, 'replyCount', 1);
     }
-
-    // 清除相关缓存
-    await this.clearCommentCache(articleId);
 
     const result = await this.findById(savedComment.id);
     if (!result) {
@@ -229,7 +224,7 @@ export class CommentService extends BaseService<Comment> {
   }
 
   /**
-   * 更新评论（重写BaseService方法以处理权限检查和缓存清除）
+   * 更新评论（重写BaseService方法以处理权限检查）
    */
   async update(
     id: string,
@@ -265,14 +260,11 @@ export class CommentService extends BaseService<Comment> {
     // 使用BaseService的update方法
     const updatedComment = await super.update(id, comment);
 
-    // 清除缓存
-    await this.clearCommentCache(comment.articleId, id);
-
     return updatedComment;
   }
 
   /**
-   * 删除评论（重写BaseService方法以处理权限检查、评论计数和缓存清除）
+   * 删除评论（重写BaseService方法以处理权限检查和评论计数）
    */
   async remove(id: string, userId?: string, isAdmin = false): Promise<void> {
     const comment = await super.findById(id);
@@ -306,9 +298,6 @@ export class CommentService extends BaseService<Comment> {
         1,
       );
     }
-
-    // 清除缓存
-    await this.clearCommentCache(comment.articleId, id);
   }
 
   /**
@@ -363,9 +352,6 @@ export class CommentService extends BaseService<Comment> {
       throw new NotFoundException(ErrorCode.COMMENT_NOT_FOUND);
     }
 
-    // 清除缓存
-    await this.clearCommentCache(comment.articleId, commentId);
-
     return {
       liked,
       likeCount: updatedComment.likeCount,
@@ -414,31 +400,5 @@ export class CommentService extends BaseService<Comment> {
       .leftJoinAndSelect('comment.author', 'author')
       .leftJoinAndSelect('comment.parent', 'parent')
       .leftJoinAndSelect('parent.author', 'parentAuthor');
-  }
-
-  /**
-   * 清除评论相关缓存
-   */
-  private async clearCommentCache(
-    articleId: string,
-    commentId?: string,
-  ): Promise<void> {
-    // 使用统一的缓存策略清除相关缓存
-    const promises = [
-      this.cacheService.del(`article:${articleId}`, {
-        type: CACHE_TYPES.COMMENT,
-      }),
-      this.cacheService.del(`tree:${articleId}`, {
-        type: CACHE_TYPES.COMMENT,
-      }),
-    ];
-
-    if (commentId) {
-      promises.push(
-        this.cacheService.del(commentId, { type: CACHE_TYPES.COMMENT }),
-      );
-    }
-
-    await Promise.all(promises);
   }
 }

@@ -3,9 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Article } from '@/entities/article.entity';
 import { ArticleStatus } from '@/dto/article.dto';
-import { CacheService } from '@/common/cache/cache.service';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
-import { CACHE_TYPES } from '@/common/cache/cache.config';
 import {
   NotFoundException,
   ConflictException,
@@ -18,7 +16,6 @@ export class ArticleStatusService {
   constructor(
     @InjectRepository(Article)
     private readonly articleRepository: Repository<Article>,
-    private readonly cacheService: CacheService,
     private readonly logger: StructuredLoggerService,
   ) {
     this.logger.setContext({ module: 'ArticleStatusService' });
@@ -49,9 +46,6 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.clearArticleCache(id);
-
     this.logger.log('文章发布成功', {
       metadata: { articleId: id, title: article.title },
     });
@@ -81,9 +75,6 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.clearArticleCache(id);
-
     this.logger.log('文章取消发布成功', {
       metadata: { articleId: id, title: article.title },
     });
@@ -111,9 +102,6 @@ export class ArticleStatusService {
     article.updatedAt = new Date();
 
     const updatedArticle = await this.articleRepository.save(article);
-
-    // 清除相关缓存
-    await this.clearArticleCache(id);
 
     this.logger.log('文章归档成功', {
       metadata: { articleId: id, title: article.title },
@@ -143,9 +131,6 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.clearArticleCache(id);
-
     this.logger.log('文章恢复成功', {
       metadata: { articleId: id, title: article.title },
     });
@@ -166,9 +151,6 @@ export class ArticleStatusService {
     article.updatedAt = new Date();
 
     const updatedArticle = await this.articleRepository.save(article);
-
-    // 清除相关缓存
-    await this.clearArticleCache(id);
 
     this.logger.log(`文章${featured ? '设置' : '取消'}精选成功`, {
       metadata: { articleId: id, title: article.title, featured },
@@ -191,9 +173,6 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.clearArticleCache(id);
-
     this.logger.log(`文章${top ? '设置' : '取消'}置顶成功`, {
       metadata: { articleId: id, title: article.title, top },
     });
@@ -214,9 +193,6 @@ export class ArticleStatusService {
     article.updatedAt = new Date();
 
     const updatedArticle = await this.articleRepository.save(article);
-
-    // 清除相关缓存
-    await this.clearArticleCache(id);
 
     this.logger.log(`文章可见性切换成功`, {
       metadata: {
@@ -255,11 +231,6 @@ export class ArticleStatusService {
       },
     );
 
-    // 清除相关缓存
-    await Promise.all(
-      publishableArticles.map((article) => this.clearArticleCache(article.id)),
-    );
-
     this.logger.log('批量发布文章成功', {
       metadata: {
         count: publishableArticles.length,
@@ -290,11 +261,6 @@ export class ArticleStatusService {
         status: 'archived',
         updatedAt: new Date(),
       },
-    );
-
-    // 清除相关缓存
-    await Promise.all(
-      archivableArticles.map((article) => this.clearArticleCache(article.id)),
     );
 
     this.logger.log('批量归档文章成功', {
@@ -336,9 +302,6 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.clearArticleCache(id);
-
     this.logger.log('作者发布文章成功', {
       metadata: { articleId: id, authorId, title: article.title },
     });
@@ -363,9 +326,6 @@ export class ArticleStatusService {
 
     await this.articleRepository.delete(id);
 
-    // 清除相关缓存
-    await this.clearArticleCache(id);
-
     this.logger.log('作者删除文章成功', {
       metadata: { articleId: id, authorId, title: article.title },
     });
@@ -379,56 +339,12 @@ export class ArticleStatusService {
     published: number;
     archived: number;
   }> {
-    const cacheKey = 'article:status:counts';
-    const cached = await this.cacheService.get<{
-      draft: number;
-      published: number;
-      archived: number;
-    }>(cacheKey, { type: CACHE_TYPES.STATS });
-
-    if (cached) {
-      return cached;
-    }
-
     const [draft, published, archived] = await Promise.all([
       this.articleRepository.count({ where: { status: 'draft' } }),
       this.articleRepository.count({ where: { status: 'published' } }),
       this.articleRepository.count({ where: { status: 'archived' } }),
     ]);
 
-    const counts = { draft, published, archived };
-    await this.cacheService.set(cacheKey, counts, {
-      type: CACHE_TYPES.STATS,
-    });
-
-    return counts;
-  }
-
-  /**
-   * 清除文章相关缓存
-   */
-  private async clearArticleCache(articleId: string): Promise<void> {
-    try {
-      await Promise.all([
-        // 清除文章本身的缓存
-        this.cacheService.del(articleId, { type: CACHE_TYPES.ARTICLE }),
-        // 清除列表缓存
-        this.cacheService.clearCacheByPattern('article:paginated:*'),
-        this.cacheService.clearCacheByPattern('article:popular:*'),
-        this.cacheService.clearCacheByPattern('article:recent:*'),
-        this.cacheService.clearCacheByPattern('article:featured:*'),
-        this.cacheService.clearCacheByPattern('article:archive:*'),
-        this.cacheService.clearCacheByPattern('article:search:*'),
-        // 清除状态统计缓存
-        this.cacheService.del('article:status:counts', {
-          type: CACHE_TYPES.STATS,
-        }),
-        this.cacheService.clearCacheByPattern('article:stats:*'),
-      ]);
-    } catch (error) {
-      this.logger.warn('清除文章缓存失败', {
-        metadata: { articleId, error: error as string },
-      });
-    }
+    return { draft, published, archived };
   }
 }

@@ -17,22 +17,22 @@ import { PaginatedResponse } from '@/common/interfaces/response.interface';
 import { ErrorCode } from '@/common/constants/error-codes';
 import { BaseService } from '@/common/base/base.service';
 import { SlugUtil } from '@/common/utils/slug.util';
-import { CACHE_TYPES } from '@/common/cache/cache.config';
-import { CacheService } from '@/common/cache/cache.service';
 import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { PaginationUtil } from '@/common/utils/pagination.util';
+import { BlogCacheService } from '@/common/cache/blog-cache.service';
 
 @Injectable()
 export class CategoryService extends BaseService<Category> {
   constructor(
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
-    @Inject(CacheService) cacheService: CacheService,
     @Inject(ConfigService) configService: ConfigService,
     @Inject(StructuredLoggerService) logger: StructuredLoggerService,
+    @Inject(BlogCacheService)
+    private readonly blogCacheService: BlogCacheService,
   ) {
-    super(categoryRepository, 'category', cacheService, configService, logger);
+    super(categoryRepository, 'category', configService, logger);
     this.logger.setContext({ module: 'CategoryService' });
   }
 
@@ -81,7 +81,10 @@ export class CategoryService extends BaseService<Category> {
 
     // 使用BaseService的create方法
     const savedCategory = await super.create(categoryCreateData);
-    await this.clearCategoryCache();
+
+    // 清除分类缓存
+    await this.blogCacheService.clearCategoryCache();
+
     return savedCategory;
   }
 
@@ -141,6 +144,29 @@ export class CategoryService extends BaseService<Category> {
   }
 
   /**
+   * 获取所有分类（带缓存）
+   */
+  async findAll(): Promise<Category[]> {
+    // 尝试从缓存获取
+    const cached = await this.blogCacheService.getAllCategories();
+    if (cached && Array.isArray(cached)) {
+      return cached as Category[];
+    }
+
+    // 从数据库查询
+    const categories = await this.categoryRepository.find({
+      where: { isActive: true },
+      relations: ['parent', 'children'],
+      order: { sortOrder: 'ASC', name: 'ASC' },
+    });
+
+    // 缓存结果
+    await this.blogCacheService.setAllCategories(categories);
+
+    return categories;
+  }
+
+  /**
    * 根据ID查找分类（重写BaseService方法以包含关联数据）
    */
   async findById(id: string, includeRelations = true): Promise<Category> {
@@ -152,14 +178,6 @@ export class CategoryService extends BaseService<Category> {
       return category;
     }
 
-    // 使用统一的缓存策略
-    const cached = await this.cacheService.get<Category>(id, {
-      type: CACHE_TYPES.CATEGORY,
-    });
-    if (cached) {
-      return cached;
-    }
-
     const category = await this.categoryRepository.findOne({
       where: { id },
       relations: ['parent', 'children'],
@@ -169,23 +187,10 @@ export class CategoryService extends BaseService<Category> {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
-    // 缓存分类信息
-    await this.cacheService.set(id, category, {
-      type: CACHE_TYPES.CATEGORY,
-    });
-
     return category;
   }
 
   async findBySlug(slug: string): Promise<Category> {
-    const cacheKey = `category:slug:${slug}`;
-    const cached = await this.cacheService.get<Category>(cacheKey, {
-      type: CACHE_TYPES.CATEGORY,
-    });
-    if (cached) {
-      return cached;
-    }
-
     const category = await this.categoryRepository.findOne({
       where: { slug },
       relations: ['parent', 'children'],
@@ -195,9 +200,6 @@ export class CategoryService extends BaseService<Category> {
       throw new NotFoundException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
-    await this.cacheService.set(cacheKey, category, {
-      type: CACHE_TYPES.CATEGORY,
-    });
     return category;
   }
 
@@ -259,7 +261,10 @@ export class CategoryService extends BaseService<Category> {
 
     // 使用BaseService的update方法
     const updatedCategory = await super.update(id, updateDataWithValidation);
-    await this.clearCategoryCache();
+
+    // 清除分类缓存
+    await this.blogCacheService.clearCategoryCache();
+
     return updatedCategory;
   }
 
@@ -290,18 +295,9 @@ export class CategoryService extends BaseService<Category> {
 
     // 使用BaseService的softRemove方法
     await super.remove(id);
-    await this.clearCategoryCache();
   }
 
   async getTree(): Promise<Category[]> {
-    const cacheKey = 'category:tree';
-    const cached = await this.cacheService.get<Category[]>(cacheKey, {
-      type: CACHE_TYPES.CATEGORY,
-    });
-    if (cached) {
-      return cached;
-    }
-
     const categories = await this.categoryRepository.find({
       where: { isActive: true },
       relations: ['children'],
@@ -309,9 +305,6 @@ export class CategoryService extends BaseService<Category> {
     });
 
     const tree = this.buildTree(categories);
-    await this.cacheService.set(cacheKey, tree, {
-      type: CACHE_TYPES.CATEGORY,
-    });
     return tree;
   }
 
@@ -357,7 +350,6 @@ export class CategoryService extends BaseService<Category> {
       .getCount();
 
     await this.categoryRepository.update(categoryId, { articleCount: count });
-    await this.clearCategoryCache();
   }
 
   async findOrCreate(name: string): Promise<Category> {
@@ -381,7 +373,6 @@ export class CategoryService extends BaseService<Category> {
     });
 
     const savedCategory = await this.categoryRepository.save(category);
-    await this.clearCategoryCache();
     return savedCategory;
   }
 
@@ -432,8 +423,15 @@ export class CategoryService extends BaseService<Category> {
     return rootCategories;
   }
 
-  private async clearCategoryCache(): Promise<void> {
-    // 使用统一的缓存策略清除相关缓存
-    await this.cacheService.clearByType(CACHE_TYPES.CATEGORY);
+  private buildCategoryTree(
+    categories: Category[],
+    parentId: string | null = null,
+  ): Category[] {
+    return categories
+      .filter((category) => category.parentId === parentId)
+      .map((category) => ({
+        ...category,
+        children: this.buildCategoryTree(categories, category.id),
+      }));
   }
 }

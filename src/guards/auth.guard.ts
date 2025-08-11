@@ -51,7 +51,7 @@ export class JwtAuthGuard implements CanActivate {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
-      // 检查token是否在黑名单中（缓存失败时跳过检查）
+      // 检查token是否在黑名单中
       try {
         const isBlacklisted = await this.userService.isTokenBlacklisted(token);
         if (isBlacklisted) {
@@ -62,7 +62,7 @@ export class JwtAuthGuard implements CanActivate {
         console.warn('Token blacklist check failed:', error);
       }
 
-      // 检查用户是否被强制退出（缓存失败时跳过检查）
+      // 检查用户是否被强制退出
       if (payload.iat) {
         try {
           const isForcedLogout = await this.userService.isUserForcedLogout(

@@ -84,37 +84,6 @@ class DatabaseConfig {
   connectionTimeout?: number = 30000;
 }
 
-class RedisConfig {
-  @IsString()
-  @IsNotEmpty()
-  host: string;
-
-  @IsPort()
-  @Transform(({ value }) => parseInt(value, 10))
-  port: number;
-
-  @IsString()
-  @IsOptional()
-  password?: string;
-
-  @IsNumber()
-  @Min(0)
-  @Max(15)
-  @Transform(({ value }) => parseInt(value, 10))
-  @IsOptional()
-  db?: number = 0;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1000)
-  connectTimeout?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  maxRetriesPerRequest?: number;
-}
-
 class JwtConfig {
   @IsString()
   @IsNotEmpty()
@@ -267,9 +236,6 @@ export class EnvironmentVariables {
   @Type(() => DatabaseConfig)
   database: DatabaseConfig;
 
-  @Type(() => RedisConfig)
-  redis: RedisConfig;
-
   @Type(() => JwtConfig)
   jwt: JwtConfig;
 
@@ -353,18 +319,6 @@ export function validateConfig(
       acquireTimeout: config.DB_CONNECTION_TIMEOUT
         ? parseInt(config.DB_CONNECTION_TIMEOUT as string, 10)
         : 60000,
-    },
-    redis: {
-      host: config.REDIS_HOST || 'localhost',
-      port: parseInt((config.REDIS_PORT as string) || '6379'),
-      password: config.REDIS_PASSWORD,
-      db: parseInt((config.REDIS_DB as string) || '0'),
-      connectTimeout: parseInt(
-        (config.REDIS_CONNECT_TIMEOUT as string) || '10000',
-      ),
-      maxRetriesPerRequest: parseInt(
-        (config.REDIS_MAX_RETRIES as string) || '3',
-      ),
     },
     jwt: {
       secret: config.JWT_SECRET || 'default-secret-key-change-in-production',

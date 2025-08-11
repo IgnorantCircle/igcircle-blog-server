@@ -1,10 +1,10 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { CacheModule } from '@nestjs/cache-manager';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { CacheService } from './cache/cache.service';
+import { CacheModule } from '@nestjs/cache-manager';
 import { StructuredLoggerService } from './logger/structured-logger.service';
 import { RateLimitMiddleware } from './middleware/rate-limit.middleware';
+import { BlogCacheService } from './cache/blog-cache.service';
 import { configFactory } from './config/config.validation';
 
 @Global()
@@ -16,12 +16,15 @@ import { configFactory } from './config/config.validation';
       load: [configFactory],
       validationSchema: undefined, // 使用自定义验证
     }),
+    EventEmitterModule.forRoot({}),
     CacheModule.register({
       isGlobal: true,
+      ttl: 300, // 5分钟默认TTL
+      max: 1000, // 最大缓存项数
+      disableKeyvPrefix: true, //禁用 keyv 自带的前缀
     }),
-    EventEmitterModule.forRoot({}),
   ],
-  providers: [CacheService, StructuredLoggerService, RateLimitMiddleware],
-  exports: [CacheService, StructuredLoggerService, RateLimitMiddleware],
+  providers: [StructuredLoggerService, RateLimitMiddleware, BlogCacheService],
+  exports: [StructuredLoggerService, RateLimitMiddleware, BlogCacheService],
 })
 export class CommonModule {}
