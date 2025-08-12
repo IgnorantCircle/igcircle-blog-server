@@ -69,7 +69,6 @@ export class ArticleQueryService extends BaseService<Article> {
       status,
       categoryIds,
       tagIds,
-      authorId,
       isFeatured,
       keyword,
       isTop,
@@ -87,7 +86,6 @@ export class ArticleQueryService extends BaseService<Article> {
       status,
       categoryIds,
       tagIds,
-      authorId,
       isFeatured,
       isTop,
       keyword,
@@ -377,24 +375,6 @@ export class ArticleQueryService extends BaseService<Article> {
   }
 
   /**
-   * 根据作者获取文章
-   */
-  async getArticlesByAuthor(
-    authorId: string,
-    page: number = 1,
-    limit: number = 10,
-  ): Promise<ArticleQueryResult> {
-    return this.findAllPaginated({
-      authorId,
-      status: ArticleStatus.PUBLISHED,
-      page,
-      limit,
-      sortBy: 'publishedAt',
-      sortOrder: 'DESC',
-    });
-  }
-
-  /**
    * 获取相关文章
    */
   async getRelatedArticles(id: string, limit: number = 5): Promise<Article[]> {
@@ -591,15 +571,7 @@ export class ArticleQueryService extends BaseService<Article> {
     queryBuilder: SelectQueryBuilder<Article>,
     filters: Partial<ArticleQueryOptions>,
   ): void {
-    const {
-      status,
-      categoryIds,
-      tagIds,
-      authorId,
-      isFeatured,
-      isTop,
-      keyword,
-    } = filters;
+    const { status, categoryIds, tagIds, isFeatured, isTop, keyword } = filters;
 
     if (status) {
       queryBuilder.andWhere('article.status = :status', { status });
@@ -622,10 +594,6 @@ export class ArticleQueryService extends BaseService<Article> {
       }
 
       queryBuilder.andWhere('tags.id IN (:...tagIds)', { tagIds });
-    }
-
-    if (authorId) {
-      queryBuilder.andWhere('article.authorId = :authorId', { authorId });
     }
 
     if (typeof isFeatured === 'boolean') {

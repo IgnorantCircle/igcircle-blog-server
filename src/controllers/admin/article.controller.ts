@@ -170,9 +170,133 @@ export class AdminArticleController {
   @Get('stats')
   @ApiOperation({ summary: '获取文章统计信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getStatistics(): Promise<Record<string, number>> {
-    const stats = await this.articleService.getStatistics();
-    return stats;
+  async getStatistics(): Promise<any> {
+    const [
+      basicStats,
+      popularArticles,
+      recentArticles,
+      popularTags,
+      readingTimeStats,
+    ] = await Promise.all([
+      this.articleService.getStatistics(),
+      this.articleService.getPopular(10),
+      this.articleService.getRecent(10),
+      this.articleService.getPopularTags(20),
+      this.articleService.getReadingTimeStats(),
+    ]);
+
+    // 获取分类统计
+    const categoryStats = await this.getCategoryStats();
+
+    // 获取月度统计
+    const monthlyStats = await this.getMonthlyStats();
+
+    // 计算总浏览量、点赞数、评论数、分享数
+    const totalStats = await this.getTotalStats();
+
+    // 获取精选和置顶文章数量
+    const featuredCount = await this.articleService
+      .findAllPaginated({
+        isFeatured: true,
+        limit: 1,
+      })
+      .then((result) => result.total);
+
+    const topCount = await this.articleService
+      .findAllPaginated({
+        isTop: true,
+        limit: 1,
+      })
+      .then((result) => result.total);
+
+    return {
+      ...basicStats,
+      ...totalStats,
+      featuredCount,
+      topCount,
+      popularArticles,
+      recentArticles,
+      categoryStats,
+      tagStats: popularTags.map((tag: any) => ({
+        name: tag.name as string,
+        count: tag.articleCount as number,
+        percentage:
+          basicStats.published > 0
+            ? Math.round((tag.articleCount / basicStats.published) * 100)
+            : 0,
+      })),
+      monthlyStats,
+      readingTimeStats,
+    };
+  }
+
+  private async getCategoryStats(): Promise<
+    { name: string; count: number; percentage: number }[]
+  > {
+    const result = await this.articleService['articleRepository']
+      .createQueryBuilder('article')
+      .leftJoin('article.category', 'category')
+      .select('category.name', 'name')
+      .addSelect('COUNT(article.id)', 'count')
+      .where('article.status = :status', { status: 'published' })
+      .andWhere('article.isVisible = :isVisible', { isVisible: true })
+      .groupBy('category.id')
+      .orderBy('count', 'DESC')
+      .getRawMany();
+
+    const total = result.reduce((sum, item) => sum + parseInt(item.count), 0);
+
+    return result.map((item) => ({
+      name: item.name || '未分类',
+      count: parseInt(item.count),
+      percentage:
+        total > 0 ? Math.round((parseInt(item.count) / total) * 100) : 0,
+    }));
+  }
+
+  private async getMonthlyStats(): Promise<
+    { month: string; articles: number; views: number }[]
+  > {
+    const result = await this.articleService['articleRepository']
+      .createQueryBuilder('article')
+      .select('DATE_FORMAT(article.publishedAt, "%Y-%m")', 'month')
+      .addSelect('COUNT(article.id)', 'articles')
+      .addSelect('SUM(article.viewCount)', 'views')
+      .where('article.status = :status', { status: 'published' })
+      .andWhere('article.publishedAt >= DATE_SUB(NOW(), INTERVAL 12 MONTH)')
+      .groupBy('month')
+      .orderBy('month', 'ASC')
+      .getRawMany();
+
+    return result.map((item) => ({
+      month: item.month,
+      articles: parseInt(item.articles),
+      views: parseInt(item.views) || 0,
+    }));
+  }
+
+  private async getTotalStats(): Promise<{
+    totalViews: number;
+    totalLikes: number;
+    totalComments: number;
+    totalShares: number;
+  }> {
+    const result = await this.articleService['articleRepository']
+      .createQueryBuilder('article')
+      .select('SUM(article.viewCount)', 'totalViews')
+      .addSelect('SUM(article.likeCount)', 'totalLikes')
+      .addSelect('SUM(article.commentCount)', 'totalComments')
+      .addSelect('SUM(article.shareCount)', 'totalShares')
+      .where('article.status = :status', { status: 'published' })
+      .andWhere('article.isVisible = :isVisible', { isVisible: true })
+      .getRawOne();
+
+    return {
+      totalViews: parseInt(result.totalViews) || 0,
+      totalLikes: parseInt(result.totalLikes) || 0,
+      totalComments: parseInt(result.totalComments) || 0,
+      totalShares: parseInt(result.totalShares) || 0,
+    };
   }
 
   @Get(':id')

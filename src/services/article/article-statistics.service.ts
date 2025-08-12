@@ -45,39 +45,26 @@ export class ArticleStatisticsService {
     published: number;
     draft: number;
     archived: number;
+    featuredCount: number;
+    topCount: number;
   }> {
-    const [total, published, draft, archived] = await Promise.all([
-      this.articleRepository.count(),
-      this.articleRepository.count({ where: { status: 'published' } }),
-      this.articleRepository.count({ where: { status: 'draft' } }),
-      this.articleRepository.count({ where: { status: 'archived' } }),
-    ]);
+    const [total, published, draft, archived, featuredCount, topCount] =
+      await Promise.all([
+        this.articleRepository.count(),
+        this.articleRepository.count({
+          where: { status: ArticleStatus.PUBLISHED },
+        }),
+        this.articleRepository.count({
+          where: { status: ArticleStatus.DRAFT },
+        }),
+        this.articleRepository.count({
+          where: { status: ArticleStatus.ARCHIVED },
+        }),
+        this.articleRepository.count({ where: { isFeatured: true } }),
+        this.articleRepository.count({ where: { isTop: true } }),
+      ]);
 
-    return { total, published, draft, archived };
-  }
-
-  /**
-   * 获取文章浏览历史统计
-   */
-  async getViewHistory(
-    id: string,
-    days: number = 30,
-  ): Promise<{ date: string; views: number }[]> {
-    // 这里应该从专门的浏览历史表获取数据
-    // 暂时返回模拟数据，实际项目中应该有专门的浏览记录表
-    const history: { date: string; views: number }[] = [];
-    const now = new Date();
-
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      history.push({
-        date: date.toISOString().split('T')[0],
-        views: Math.floor(Math.random() * 100), // 模拟数据
-      });
-    }
-
-    return history;
+    return { total, published, draft, archived, featuredCount, topCount };
   }
 
   /**

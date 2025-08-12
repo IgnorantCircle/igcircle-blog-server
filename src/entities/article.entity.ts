@@ -97,9 +97,6 @@ export class Article {
   @Column({ type: 'int', default: 0 })
   shareCount: number; // 分享次数
 
-  @Column({ type: 'json', nullable: true })
-  viewHistory: { date: string; count: number }[]; // 浏览历史统计
-
   // 分类关联
   @Column({ type: 'varchar', nullable: true })
   categoryId: string;

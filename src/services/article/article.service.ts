@@ -145,7 +145,6 @@ export class ArticleService extends BaseService<Article> {
       status: query.status,
       categoryIds: query.categoryIds,
       tagIds: query.tagIds,
-      authorId: query.authorId,
       isFeatured: query.isFeatured,
       isTop: query.isTop,
       keyword: query.keyword,
@@ -710,14 +709,6 @@ export class ArticleService extends BaseService<Article> {
 
   async removeByAuthor(id: string, authorId: string): Promise<void> {
     return this.articleStatusService.removeByAuthor(id, authorId);
-  }
-
-  // 获取文章的浏览历史统计
-  async getViewHistory(
-    id: string,
-    days: number = 30,
-  ): Promise<{ date: string; views: number }[]> {
-    return this.articleStatisticsService.getViewHistory(id, days);
   }
 
   // 获取热门标签（基于文章数量）

@@ -283,16 +283,6 @@ export class ArticleQueryDto extends BaseQueryDto {
   })
   categoryIds?: string[];
   @ApiPropertyOptional({
-    description: '作者ID',
-    example: 'uuid-string',
-  })
-  @IsOptional()
-  @IsUUID('4', {
-    message: VALIDATION_MESSAGES.INVALID_UUID('作者ID'),
-  })
-  authorId?: string;
-
-  @ApiPropertyOptional({
     description: '文章状态',
     enum: ArticleStatus,
     example: ArticleStatus.PUBLISHED,
