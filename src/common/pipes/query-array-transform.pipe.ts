@@ -20,11 +20,16 @@ export function createQueryArrayTransformPipe(arrayFields: string[] = []) {
       // 处理指定的数组字段
       arrayFields.forEach((field) => {
         const arrayKey = `${field}[]`;
+        // 处理 field[] 格式的参数
         if (value[arrayKey]) {
           transformed[field] = Array.isArray(value[arrayKey])
             ? value[arrayKey]
             : [value[arrayKey]];
           delete transformed[arrayKey];
+        }
+        // 处理单值参数，将其转换为数组
+        else if (value[field] && !Array.isArray(value[field])) {
+          transformed[field] = [value[field]];
         }
       });
 
