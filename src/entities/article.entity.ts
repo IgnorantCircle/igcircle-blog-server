@@ -13,6 +13,7 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
+import { Tag } from './tag.entity';
 
 @Entity('articles')
 export class Article {
@@ -35,13 +36,13 @@ export class Article {
   @Column({ type: 'text', nullable: true })
   coverImage: string;
 
-  @ManyToMany('Tag', 'articles', { cascade: true })
+  @ManyToMany(() => Tag, { cascade: true })
   @JoinTable({
     name: 'article_tags',
     joinColumn: { name: 'articleId', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'tagId', referencedColumnName: 'id' },
   })
-  tags: any[];
+  tags: Tag[];
 
   @Column({
     type: 'enum',

@@ -18,7 +18,7 @@ export class BlogCacheService {
     RECENT_ARTICLES: 'blog:articles:recent',
     ALL_TAGS: 'blog:tags:all',
     ALL_CATEGORIES: 'blog:categories:all',
-    ARTICLE_DETAIL: (id: string) => `blog:article:${id}`,
+    ARTICLE_DETAIL_BY_SLUG: (slug: string) => `blog:article:slug:${slug}`,
     USER_ONLINE_STATUS: (userId: string) => `blog:user:online:${userId}`,
     USER_TOKEN: (userId: string, tokenId: string) =>
       `blog:user:token:${userId}:${tokenId}`,
@@ -34,7 +34,7 @@ export class BlogCacheService {
     RECENT_ARTICLES: 5 * 60 * 1000, // 5分钟 (毫秒)
     ALL_TAGS: 60 * 60 * 1000, // 1小时 (毫秒)
     ALL_CATEGORIES: 60 * 60 * 1000, // 1小时 (毫秒)
-    ARTICLE_DETAIL: 30 * 60 * 1000, // 30分钟 (毫秒)
+    ARTICLE_DETAIL_BY_SLUG: 30 * 60 * 1000, // 30分钟 (毫秒)
     USER_ONLINE_STATUS: 5 * 60 * 1000, // 5分钟 (毫秒)
     USER_TOKEN: 24 * 60 * 60 * 1000, // 24小时 (毫秒)
   };
@@ -119,6 +119,18 @@ export class BlogCacheService {
   }
 
   /**
+   * 清除热门文章缓存（当文章浏览量变化时调用）
+   */
+  async clearPopularArticlesCache(): Promise<void> {
+    try {
+      await this.del(BlogCacheService.KEYS.POPULAR_ARTICLES);
+      this.logger.debug('热门文章缓存已清除');
+    } catch (error) {
+      this.logger.error('清除热门文章缓存失败', error);
+    }
+  }
+
+  /**
    * 获取最新文章缓存
    */
   async getRecentArticles(): Promise<unknown> {
@@ -137,19 +149,37 @@ export class BlogCacheService {
   }
 
   /**
-   * 获取文章详情缓存（仅缓存前50篇热门文章）
+   * 获取文章详情缓存（通过slug）
    */
-  async getArticleDetail(id: string): Promise<unknown> {
-    const key = BlogCacheService.KEYS.ARTICLE_DETAIL(id);
+  async getArticleDetailBySlug(slug: string): Promise<unknown> {
+    const key = BlogCacheService.KEYS.ARTICLE_DETAIL_BY_SLUG(slug);
     return this.get(key);
   }
 
   /**
-   * 设置文章详情缓存
+   * 设置文章详情缓存（通过slug）
    */
-  async setArticleDetail(id: string, data: unknown): Promise<void> {
-    const key = BlogCacheService.KEYS.ARTICLE_DETAIL(id);
-    await this.set(key, data, BlogCacheService.TTL.ARTICLE_DETAIL);
+  async setArticleDetailBySlug(slug: string, data: unknown): Promise<void> {
+    const key = BlogCacheService.KEYS.ARTICLE_DETAIL_BY_SLUG(slug);
+    await this.set(key, data, BlogCacheService.TTL.ARTICLE_DETAIL_BY_SLUG);
+  }
+
+  /**
+   * 清除文章详情缓存（通过slug）
+   */
+  async clearArticleDetailBySlug(slug: string): Promise<void> {
+    try {
+      await this.del(BlogCacheService.KEYS.ARTICLE_DETAIL_BY_SLUG(slug));
+    } catch (error) {
+      this.logger.error(
+        '清除文章详情缓存失败',
+        error instanceof Error ? error.stack : undefined,
+        {
+          action: 'clear_article_detail_by_slug_cache',
+          metadata: { slug },
+        },
+      );
+    }
   }
 
   /**
@@ -191,21 +221,31 @@ export class BlogCacheService {
   /**
    * 清除文章相关缓存（发布、更新、删除文章时调用）
    */
-  async clearArticleCache(articleId?: string): Promise<void> {
+  async clearArticleCache(slug?: string): Promise<void> {
     try {
-      // 清除列表缓存
-      await this.clearPattern(BlogCacheService.KEYS.ARTICLE_LIST);
+      // 清除常见的文章列表缓存（不同分页）
+      const commonPageSizes = [10, 20, 50];
+      const maxPages = 10; // 清除前10页的缓存
+
+      for (const limit of commonPageSizes) {
+        for (let page = 1; page <= maxPages; page++) {
+          const key = `${BlogCacheService.KEYS.ARTICLE_LIST}:${page}:${limit}`;
+          await this.del(key);
+        }
+      }
+
+      // 清除其他文章相关缓存
       await this.del(BlogCacheService.KEYS.FEATURED_ARTICLES);
       await this.del(BlogCacheService.KEYS.TOP_ARTICLES);
       await this.del(BlogCacheService.KEYS.POPULAR_ARTICLES);
       await this.del(BlogCacheService.KEYS.RECENT_ARTICLES);
 
-      // 如果指定了文章ID，清除该文章的详情缓存
-      if (articleId) {
-        await this.del(BlogCacheService.KEYS.ARTICLE_DETAIL(articleId));
+      // 如果指定了文章slug，清除该文章的详情缓存
+      if (slug) {
+        await this.clearArticleDetailBySlug(slug);
       }
 
-      this.logger.debug(`文章缓存已清除: ${articleId}`);
+      this.logger.debug(`文章缓存已清除: ${slug || 'all'}`);
     } catch (error) {
       this.logger.error('清除文章缓存失败', error);
     }

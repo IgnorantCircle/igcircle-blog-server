@@ -114,8 +114,20 @@ export class ImportValidationService {
   validateFiles(files: Express.Multer.File[]): string[] {
     const errors: string[] = [];
 
-    if (!files || files.length === 0) {
+    // 检查files是否存在且为数组
+    if (!files) {
       errors.push('没有提供要导入的文件');
+      return errors;
+    }
+
+    if (!Array.isArray(files)) {
+      errors.push('文件参数格式错误，应为文件数组');
+      return errors;
+    }
+
+    if (files.length === 0) {
+      errors.push('没有提供要导入的文件');
+      return errors;
     }
 
     // 检查文件大小限制（例如：每个文件不超过10MB）

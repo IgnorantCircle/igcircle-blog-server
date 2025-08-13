@@ -5,11 +5,14 @@ import {
   ParseUUIDPipe,
   Query,
   UseInterceptors,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { ArticleService } from '@/services/article/article.service';
 import { ArticleQueryService } from '@/services/article/article-query.service';
 import { Public } from '@/decorators/public.decorator';
+import { CurrentUser } from '@/decorators/user.decorator';
 import {
   UnifiedArticleDto,
   UnifiedArticleDetailDto,
@@ -23,6 +26,12 @@ import { NotFoundException } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
 import { PaginationUtil } from '@/common/utils/pagination.util';
 
+interface CurrentUserType {
+  sub: string;
+  username: string;
+  email: string;
+  role: string;
+}
 @ApiTags('公共API - 文章')
 @Controller('articles')
 @Public()
@@ -130,6 +139,14 @@ export class PublicArticleController {
     return PaginationUtil.fromQueryResult(result, page, limit);
   }
 
+  @Get('archive/stats')
+  @ApiOperation({ summary: '获取文章归档统计' })
+  @ApiResponse({ status: 200, description: '获取成功' })
+  async getArchiveStats(): Promise<{ year: number; month: number; count: number }[]> {
+    const result = await this.articleQueryService.getArchiveStats();
+    return result;
+  }
+
   @Get(':id')
   @UsePublicVisibility()
   @ApiOperation({ summary: '根据ID获取文章详情' })
@@ -139,7 +156,11 @@ export class PublicArticleController {
     description: '获取成功',
     type: UnifiedArticleDetailDto,
   })
-  async findById(@Param('id', ParseUUIDPipe) id: string): Promise<any> {
+  async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @CurrentUser() user?: CurrentUserType,
+  ): Promise<any> {
     const article = await this.articleService.findById(id);
 
     // 只返回已发布且可见的文章
@@ -150,8 +171,18 @@ export class PublicArticleController {
       );
     }
 
-    // 增加浏览次数
-    await this.articleService.incrementViews(id);
+    // 记录浏览次数（避免重复计数）
+    const ipAddress = this.getClientIp(req);
+    const userAgent = req.get('User-Agent') || null;
+    const isAdmin = user?.role === 'admin';
+
+    await this.articleService.recordView(
+      id,
+      user?.sub || null,
+      ipAddress,
+      userAgent,
+      isAdmin,
+    );
 
     return article;
   }
@@ -165,7 +196,11 @@ export class PublicArticleController {
     description: '获取成功',
     type: UnifiedArticleDetailDto,
   })
-  async findBySlug(@Param('slug') slug: string): Promise<any> {
+  async findBySlug(
+    @Param('slug') slug: string,
+    @Req() req: Request,
+    @CurrentUser() user?: CurrentUserType,
+  ): Promise<any> {
     const article = await this.articleService.findBySlug(slug);
 
     // 只返回已发布且可见的文章
@@ -176,9 +211,32 @@ export class PublicArticleController {
       );
     }
 
-    // 增加浏览次数
-    await this.articleService.incrementViews(article.id);
+    // 记录浏览次数（避免重复计数）
+    const ipAddress = this.getClientIp(req);
+    const userAgent = req.get('User-Agent') || null;
+    const isAdmin = user?.role === 'admin';
+
+    await this.articleService.recordView(
+      article.id,
+      user?.sub || null,
+      ipAddress,
+      userAgent,
+      isAdmin,
+    );
 
     return article;
+  }
+
+  /**
+   * 获取客户端真实IP地址
+   */
+  private getClientIp(req: Request): string {
+    return (
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+      (req.headers['x-real-ip'] as string) ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      '127.0.0.1'
+    );
   }
 }

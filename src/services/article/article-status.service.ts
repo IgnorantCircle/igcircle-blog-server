@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Article } from '@/entities/article.entity';
 import { ArticleStatus } from '@/dto/article.dto';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { BlogCacheService } from '@/common/cache/blog-cache.service';
+import { TagService } from '../tag.service';
+import { CategoryService } from '../category.service';
 import {
   NotFoundException,
   ConflictException,
@@ -17,6 +20,11 @@ export class ArticleStatusService {
     @InjectRepository(Article)
     private readonly articleRepository: Repository<Article>,
     private readonly logger: StructuredLoggerService,
+    private readonly blogCacheService: BlogCacheService,
+    @Inject(TagService)
+    private readonly tagService: TagService,
+    @Inject(CategoryService)
+    private readonly categoryService: CategoryService,
   ) {
     this.logger.setContext({ module: 'ArticleStatusService' });
   }
@@ -28,7 +36,10 @@ export class ArticleStatusService {
     id: string,
     publishDto?: { publishedAt?: Date },
   ): Promise<Article> {
-    const article = await this.articleRepository.findOne({ where: { id } });
+    const article = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
     if (!article) {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
@@ -46,6 +57,38 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
+    // 更新标签和分类的文章数量
+    const tagIds = article.tags?.map((tag) => tag.id) || [];
+    setImmediate(() => {
+      void (async () => {
+        // 更新标签文章数量
+        if (tagIds.length > 0) {
+          for (const tagId of tagIds) {
+            try {
+              await this.tagService.updateArticleCount(tagId);
+            } catch (error) {
+              this.logger.error(
+                `发布文章后更新标签文章数量失败: tagId=${tagId}, error=${(error as Error).message || error}`,
+              );
+            }
+          }
+        }
+        // 更新分类文章数量
+        if (article.categoryId) {
+          try {
+            await this.categoryService.updateArticleCount(article.categoryId);
+          } catch (error) {
+            this.logger.error(
+              `发布文章后更新分类文章数量失败: categoryId=${article.categoryId}, error=${(error as Error).message || error}`,
+            );
+          }
+        }
+      })();
+    });
+
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug);
+
     this.logger.log('文章发布成功', {
       metadata: { articleId: id, title: article.title },
     });
@@ -57,7 +100,10 @@ export class ArticleStatusService {
    * 取消发布文章
    */
   async unpublish(id: string): Promise<Article> {
-    const article = await this.articleRepository.findOne({ where: { id } });
+    const article = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
     if (!article) {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
@@ -74,6 +120,38 @@ export class ArticleStatusService {
     article.updatedAt = new Date();
 
     const updatedArticle = await this.articleRepository.save(article);
+
+    // 更新标签和分类的文章数量
+    const tagIds = article.tags?.map((tag) => tag.id) || [];
+    setImmediate(() => {
+      void (async () => {
+        // 更新标签文章数量
+        if (tagIds.length > 0) {
+          for (const tagId of tagIds) {
+            try {
+              await this.tagService.updateArticleCount(tagId);
+            } catch (error) {
+              this.logger.error(
+                `取消发布文章后更新标签文章数量失败: tagId=${tagId}, error=${(error as Error).message || error}`,
+              );
+            }
+          }
+        }
+        // 更新分类文章数量
+        if (article.categoryId) {
+          try {
+            await this.categoryService.updateArticleCount(article.categoryId);
+          } catch (error) {
+            this.logger.error(
+              `取消发布文章后更新分类文章数量失败: categoryId=${article.categoryId}, error=${(error as Error).message || error}`,
+            );
+          }
+        }
+      })();
+    });
+
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug);
 
     this.logger.log('文章取消发布成功', {
       metadata: { articleId: id, title: article.title },
@@ -103,6 +181,9 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug);
+
     this.logger.log('文章归档成功', {
       metadata: { articleId: id, title: article.title },
     });
@@ -131,6 +212,9 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug);
+
     this.logger.log('文章恢复成功', {
       metadata: { articleId: id, title: article.title },
     });
@@ -151,6 +235,9 @@ export class ArticleStatusService {
     article.updatedAt = new Date();
 
     const updatedArticle = await this.articleRepository.save(article);
+
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug);
 
     this.logger.log(`文章${featured ? '设置' : '取消'}精选成功`, {
       metadata: { articleId: id, title: article.title, featured },
@@ -173,6 +260,9 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug);
+
     this.logger.log(`文章${top ? '设置' : '取消'}置顶成功`, {
       metadata: { articleId: id, title: article.title, top },
     });
@@ -193,6 +283,9 @@ export class ArticleStatusService {
     article.updatedAt = new Date();
 
     const updatedArticle = await this.articleRepository.save(article);
+
+    // 清除文章相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug);
 
     this.logger.log(`文章可见性切换成功`, {
       metadata: {

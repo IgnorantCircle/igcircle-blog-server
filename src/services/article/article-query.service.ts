@@ -44,7 +44,24 @@ export class ArticleQueryService extends BaseService<Article> {
       return this.executeQuery(options);
     }
 
-    // 尝试从缓存获取文章列表
+    // 对于管理员查询（包含非已发布状态的文章），不使用缓存
+    // 因为管理员可以看到所有状态的文章，缓存会导致数据不一致
+    if (!options.status || options.status !== ArticleStatus.PUBLISHED) {
+      return this.executeQuery(options);
+    }
+
+    // 对于有特殊过滤条件的查询，不使用缓存
+    if (
+      options.categoryIds ||
+      options.tagIds ||
+      options.isFeatured !== undefined ||
+      options.isTop !== undefined ||
+      options.keyword
+    ) {
+      return this.executeQuery(options);
+    }
+
+    // 只对简单的已发布文章列表查询使用缓存
     const cached = await this.cacheManager.getArticleList(page, limit);
     if (cached) {
       return cached as ArticleQueryResult;
@@ -74,12 +91,17 @@ export class ArticleQueryService extends BaseService<Article> {
       isTop,
       sortBy = 'createdAt',
       sortOrder = 'DESC',
+      includeTags = false,
+      includeCategory = true,
     } = options;
 
     const skip = PaginationUtil.calculateSkip(page, limit);
 
-    // 使用优化的查询构建器
-    const queryBuilder = this.createOptimizedQueryBuilder('list');
+    // 使用优化的查询构建器，根据用户请求动态决定是否包含标签、分类
+    const queryBuilder = this.createOptimizedQueryBuilder('list', {
+      includeTags,
+      includeCategory,
+    });
 
     // 应用过滤条件
     this.applyFilters(queryBuilder, {
@@ -142,7 +164,7 @@ export class ArticleQueryService extends BaseService<Article> {
   }
 
   /**
-   * 获取热门文章（优化版）
+   * 获取热门文章
    */
   async getPopularArticles(
     options: ArticleQueryOptions = {},
@@ -151,6 +173,7 @@ export class ArticleQueryService extends BaseService<Article> {
     if (!this.cacheManager) {
       const popularOptions: ArticleQueryOptions = {
         ...options,
+        status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
         sortBy: 'viewCount',
         sortOrder: 'DESC',
       };
@@ -166,6 +189,7 @@ export class ArticleQueryService extends BaseService<Article> {
     // 执行查询并缓存结果
     const popularOptions: ArticleQueryOptions = {
       ...options,
+      status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
       sortBy: 'viewCount',
       sortOrder: 'DESC',
     };
@@ -176,7 +200,7 @@ export class ArticleQueryService extends BaseService<Article> {
   }
 
   /**
-   * 获取最新文章（优化版）
+   * 获取最新文章
    */
   async getRecentArticles(
     options: ArticleQueryOptions = {},
@@ -185,6 +209,7 @@ export class ArticleQueryService extends BaseService<Article> {
     if (!this.cacheManager) {
       const recentOptions: ArticleQueryOptions = {
         ...options,
+        status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
         sortBy: 'createdAt',
         sortOrder: 'DESC',
       };
@@ -200,6 +225,7 @@ export class ArticleQueryService extends BaseService<Article> {
     // 执行查询并缓存结果
     const recentOptions: ArticleQueryOptions = {
       ...options,
+      status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
       sortBy: 'createdAt',
       sortOrder: 'DESC',
     };
@@ -219,6 +245,7 @@ export class ArticleQueryService extends BaseService<Article> {
     if (!this.cacheManager) {
       const featuredOptions: ArticleQueryOptions = {
         ...options,
+        status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
         isFeatured: true,
         sortBy: 'createdAt',
         sortOrder: 'DESC',
@@ -235,6 +262,7 @@ export class ArticleQueryService extends BaseService<Article> {
     // 执行查询并缓存结果
     const featuredOptions: ArticleQueryOptions = {
       ...options,
+      status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
       isFeatured: true,
       sortBy: 'createdAt',
       sortOrder: 'DESC',
@@ -257,11 +285,16 @@ export class ArticleQueryService extends BaseService<Article> {
       limit = 10,
       sortBy = 'createdAt',
       sortOrder = 'DESC',
+      includeTags = false,
+      includeCategory = true,
     } = options;
     const skip = PaginationUtil.calculateSkip(page, limit);
 
-    // 使用搜索优化的查询构建器
-    const queryBuilder = this.createOptimizedQueryBuilder('search');
+    // 使用搜索优化的查询构建器，根据用户请求动态决定是否包含标签、分类
+    const queryBuilder = this.createOptimizedQueryBuilder('search', {
+      includeTags,
+      includeCategory,
+    });
 
     // 应用搜索条件（优化：使用全文搜索或更高效的LIKE查询）
     queryBuilder
@@ -336,6 +369,30 @@ export class ArticleQueryService extends BaseService<Article> {
     const [items, total] = await queryBuilder.getManyAndCount();
 
     return { items, total };
+  }
+
+  /**
+   * 获取归档统计数据
+   */
+  async getArchiveStats(): Promise<{ year: number; month: number; count: number }[]> {
+    const result = await this.articleRepository
+      .createQueryBuilder('article')
+      .select('YEAR(article.publishedAt)', 'year')
+      .addSelect('MONTH(article.publishedAt)', 'month')
+      .addSelect('COUNT(article.id)', 'count')
+      .where('article.status = :status', { status: 'published' })
+      .andWhere('article.isVisible = :isVisible', { isVisible: true })
+      .andWhere('article.publishedAt IS NOT NULL')
+      .groupBy('year, month')
+      .orderBy('year', 'DESC')
+      .addOrderBy('month', 'DESC')
+      .getRawMany();
+
+    return result.map((item) => ({
+      year: parseInt(item.year),
+      month: parseInt(item.month),
+      count: parseInt(item.count),
+    }));
   }
 
   /**
@@ -517,13 +574,17 @@ export class ArticleQueryService extends BaseService<Article> {
    */
   private createOptimizedQueryBuilder(
     queryType: 'list' | 'detail' | 'search' | 'stats',
+    overrides?: {
+      includeTags?: boolean;
+      includeCategory?: boolean;
+    },
   ): SelectQueryBuilder<Article> {
     switch (queryType) {
       case 'list':
-        // 列表查询：只加载必要的关联数据
+        // 列表查询：根据用户请求动态决定是否包含标签和分类
         return this.createBaseQueryBuilder({
-          includeCategory: true,
-          includeTags: false, // 列表页通常不需要标签详情
+          includeCategory: overrides?.includeCategory ?? true,
+          includeTags: overrides?.includeTags ?? false,
           includeAuthor: true,
           includeStats: true,
         });
@@ -538,10 +599,10 @@ export class ArticleQueryService extends BaseService<Article> {
         });
 
       case 'search':
-        // 搜索查询：最小化关联数据
+        // 搜索查询：根据用户请求动态决定是否包含标签和分类
         return this.createBaseQueryBuilder({
-          includeCategory: true,
-          includeTags: false,
+          includeCategory: overrides?.includeCategory ?? true,
+          includeTags: overrides?.includeTags ?? false,
           includeAuthor: true,
           includeStats: false,
         });
@@ -577,6 +638,13 @@ export class ArticleQueryService extends BaseService<Article> {
       queryBuilder.andWhere('article.status = :status', { status });
     }
 
+    // 对于用户端查询，强制过滤可见性
+    if (status === ArticleStatus.PUBLISHED) {
+      queryBuilder.andWhere('article.isVisible = :isVisible', {
+        isVisible: true,
+      });
+    }
+
     if (categoryIds && categoryIds.length > 0) {
       queryBuilder.andWhere('article.categoryId IN (:...categoryIds)', {
         categoryIds,
@@ -584,12 +652,16 @@ export class ArticleQueryService extends BaseService<Article> {
     }
 
     if (tagIds && tagIds.length > 0) {
-      // 检查是否已经join了tags表，如果没有则添加join
+      // 检查是否已经join了tags表（包括leftJoin和leftJoinAndSelect）
       const joinAlias = queryBuilder.expressionMap.joinAttributes.find(
         (join) => join.alias.name === 'tags',
       );
+      const selectAlias = queryBuilder.expressionMap.selects.find(
+        (select) => select.aliasName === 'tags',
+      );
 
-      if (!joinAlias) {
+      // 如果既没有join也没有select，则添加join
+      if (!joinAlias && !selectAlias) {
         queryBuilder.leftJoin('article.tags', 'tags');
       }
 

@@ -153,7 +153,8 @@ export class TagService extends BaseService<Tag> {
   /**
    * 根据ID查找标签（重写BaseService方法以包含关联数据）
    */
-  async findById(id: string, includeRelations = true): Promise<Tag> {
+  //includeRelations = true （默认值） ：会加载标签的关联文章数据
+  async findById(id: string, includeRelations = false): Promise<Tag> {
     if (!includeRelations) {
       const tag = await super.findById(id);
       if (!tag) {
@@ -162,16 +163,29 @@ export class TagService extends BaseService<Tag> {
       return tag;
     }
 
-    const tag = await this.tagRepository.findOne({
-      where: { id },
-      relations: ['articles'],
-    });
+    try {
+      const tag = await this.tagRepository.findOne({
+        where: { id },
+        relations: ['articles'],
+      });
 
-    if (!tag) {
+      if (!tag) {
+        throw new NotFoundException(ErrorCode.TAG_NOT_FOUND);
+      }
+
+      return tag;
+    } catch (error) {
+      // 如果是数据库查询错误，记录日志并抛出 NotFoundException
+      this.logger.error('查找标签时发生错误');
+
+      // 如果已经是 NotFoundException，直接重新抛出
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      // 其他错误转换为 NotFoundException
       throw new NotFoundException(ErrorCode.TAG_NOT_FOUND);
     }
-
-    return tag;
   }
 
   async findBySlug(slug: string): Promise<Tag> {

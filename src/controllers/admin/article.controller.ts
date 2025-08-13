@@ -10,7 +10,10 @@ import {
   ParseUUIDPipe,
   UseGuards,
   UseInterceptors,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import archiver from 'archiver';
 import {
   ApiTags,
   ApiOperation,
@@ -52,6 +55,29 @@ interface CurrentUserType {
   username: string;
   email: string;
   role: string;
+}
+
+interface TagStatsRaw {
+  name: string;
+  articleCount: string;
+}
+
+interface CategoryStatsRaw {
+  name: string;
+  count: string;
+}
+
+interface MonthlyStatsRaw {
+  month: string;
+  articles: string;
+  views: string;
+}
+
+interface TotalStatsRaw {
+  totalViews: string;
+  totalLikes: string;
+  totalComments: string;
+  totalShares: string;
 }
 
 @ApiTags('管理端API - 文章')
@@ -217,12 +243,14 @@ export class AdminArticleController {
       popularArticles,
       recentArticles,
       categoryStats,
-      tagStats: popularTags.map((tag: any) => ({
-        name: tag.name as string,
-        count: tag.articleCount as number,
+      tagStats: popularTags.map((tag: TagStatsRaw) => ({
+        name: tag.name,
+        count: parseInt(tag.articleCount),
         percentage:
           basicStats.published > 0
-            ? Math.round((tag.articleCount / basicStats.published) * 100)
+            ? Math.round(
+                (parseInt(tag.articleCount) / basicStats.published) * 100,
+              )
             : 0,
       })),
       monthlyStats,
@@ -233,7 +261,7 @@ export class AdminArticleController {
   private async getCategoryStats(): Promise<
     { name: string; count: number; percentage: number }[]
   > {
-    const result = await this.articleService['articleRepository']
+    const result = (await this.articleService['articleRepository']
       .createQueryBuilder('article')
       .leftJoin('article.category', 'category')
       .select('category.name', 'name')
@@ -242,7 +270,7 @@ export class AdminArticleController {
       .andWhere('article.isVisible = :isVisible', { isVisible: true })
       .groupBy('category.id')
       .orderBy('count', 'DESC')
-      .getRawMany();
+      .getRawMany()) as CategoryStatsRaw[];
 
     const total = result.reduce((sum, item) => sum + parseInt(item.count), 0);
 
@@ -257,7 +285,7 @@ export class AdminArticleController {
   private async getMonthlyStats(): Promise<
     { month: string; articles: number; views: number }[]
   > {
-    const result = await this.articleService['articleRepository']
+    const result = (await this.articleService['articleRepository']
       .createQueryBuilder('article')
       .select('DATE_FORMAT(article.publishedAt, "%Y-%m")', 'month')
       .addSelect('COUNT(article.id)', 'articles')
@@ -266,7 +294,7 @@ export class AdminArticleController {
       .andWhere('article.publishedAt >= DATE_SUB(NOW(), INTERVAL 12 MONTH)')
       .groupBy('month')
       .orderBy('month', 'ASC')
-      .getRawMany();
+      .getRawMany()) as MonthlyStatsRaw[];
 
     return result.map((item) => ({
       month: item.month,
@@ -281,7 +309,7 @@ export class AdminArticleController {
     totalComments: number;
     totalShares: number;
   }> {
-    const result = await this.articleService['articleRepository']
+    const result = (await this.articleService['articleRepository']
       .createQueryBuilder('article')
       .select('SUM(article.viewCount)', 'totalViews')
       .addSelect('SUM(article.likeCount)', 'totalLikes')
@@ -289,7 +317,7 @@ export class AdminArticleController {
       .addSelect('SUM(article.shareCount)', 'totalShares')
       .where('article.status = :status', { status: 'published' })
       .andWhere('article.isVisible = :isVisible', { isVisible: true })
-      .getRawOne();
+      .getRawOne()) as TotalStatsRaw;
 
     return {
       totalViews: parseInt(result.totalViews) || 0,
@@ -348,7 +376,7 @@ export class AdminArticleController {
     @Body() batchPublishDto: BatchPublishArticleDto,
   ): Promise<{ message: string }> {
     if (batchPublishDto.publishedAt) {
-      await this.articleService.batchPublishWithDate(batchPublishDto);
+      const result = await this.articleService.batchPublishWithDate(batchPublishDto);
     } else {
       await this.articleService.batchPublish(batchPublishDto.ids);
     }
@@ -371,7 +399,7 @@ export class AdminArticleController {
   async batchUpdate(
     @Body() batchUpdateDto: BatchUpdateArticleDto,
   ): Promise<{ message: string }> {
-    await this.articleService.batchUpdate(batchUpdateDto);
+    const result = await this.articleService.batchUpdate(batchUpdateDto);
     return { message: `成功更新 ${batchUpdateDto.ids.length} 篇文章` };
   }
 
@@ -481,14 +509,44 @@ export class AdminArticleController {
   @Post('batch/export')
   @ApiOperation({ summary: '批量导出文章' })
   @ApiResponse({ status: 200, description: '导出成功' })
-  async batchExport(@Body() exportDto: BatchExportArticleDto): Promise<{
-    data: string | Record<string, unknown>[];
-    format: string;
-    filename?: string;
-    count?: number;
-  }> {
+  async batchExport(
+    @Body() exportDto: BatchExportArticleDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<any> {
     const result = await this.articleService.batchExport(exportDto);
 
+    // 检查是否是多文件导出（markdown格式且返回files数组）
+    if (
+      exportDto.format === 'markdown' &&
+      typeof result === 'object' &&
+      result !== null &&
+      'files' in result &&
+      Array.isArray((result as { files: { filename: string; content: string }[] }).files)
+    ) {
+      // 创建zip压缩包
+      const archive = archiver('zip', {
+        zlib: { level: 9 } // 压缩级别
+      });
+
+      const filename = `articles_export_${new Date().toISOString().split('T')[0]}.zip`;
+      
+      res.set({
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      });
+
+      archive.pipe(res);
+
+      // 添加每个文件到压缩包
+      (result as { files: { filename: string; content: string }[] }).files.forEach((file) => {
+        archive.append(file.content, { name: file.filename });
+      });
+
+      await archive.finalize();
+      return;
+    }
+
+    // 单文件导出的情况
     if (exportDto.format === 'csv' || exportDto.format === 'markdown') {
       return {
         data: result as string,

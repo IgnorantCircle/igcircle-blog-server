@@ -210,12 +210,21 @@ export class ArticleImportController {
     @Body() configData: any,
     @CurrentUser() user: User,
   ): Promise<ArticleImportResponseDto> {
-    // 验证文件和解析配置
-    const config = this.validateFilesAndParseConfig(files, configData, '导入');
+    // 将files对象转换为数组（如果需要）
+    const filesArray = Array.isArray(files)
+      ? files
+      : Object.values(files || {});
 
-    // 执行同步导入
-    return await this.articleImportService.importArticlesSync(
-      files,
+    // 验证文件和解析配置
+    const config = this.validateFilesAndParseConfig(
+      filesArray,
+      configData,
+      '导入',
+    );
+
+    // 开始同步导入
+    return await this.articleImportService.importArticles(
+      filesArray,
       user.id,
       config,
     );
@@ -241,12 +250,21 @@ export class ArticleImportController {
     @Body() configData: any,
     @CurrentUser() user: User,
   ): Promise<StartImportResponseDto> {
+    // 将files对象转换为数组（如果需要）
+    const filesArray = Array.isArray(files)
+      ? files
+      : Object.values(files || {});
+
     // 验证文件和解析配置
-    const config = this.validateFilesAndParseConfig(files, configData, '导入');
+    const config = this.validateFilesAndParseConfig(
+      filesArray,
+      configData,
+      '导入',
+    );
 
     // 开始异步导入
     return await this.articleImportService.startImportArticles(
-      files,
+      filesArray,
       user.id,
       config,
     );
@@ -332,9 +350,13 @@ export class ArticleImportController {
   validateFiles(
     @UploadedFiles() files: Express.Multer.File[],
   ): FileValidationResponse {
-    this.validateFiles_Internal(files, '验证');
+    // 将files对象转换为数组（如果需要）
+    const filesArray = Array.isArray(files)
+      ? files
+      : Object.values(files || {});
+    this.validateFiles_Internal(filesArray, '验证');
 
-    const results = files.map((file): FileValidationResultItem => {
+    const results = filesArray.map((file): FileValidationResultItem => {
       try {
         const content = file.buffer.toString('utf-8');
         const validation = this.articleParserService.validateAndParseFile(
@@ -366,7 +388,7 @@ export class ArticleImportController {
     const invalidFiles = results.filter((r) => !r.isValid).length;
 
     const result = {
-      totalFiles: files.length,
+      totalFiles: filesArray.length,
       validFiles,
       invalidFiles,
       results,
@@ -401,7 +423,15 @@ export class ArticleImportController {
     files: Express.Multer.File[],
     action: string,
   ): void {
-    if (!files || files.length === 0) {
+    if (!files) {
+      throw new ValidationException(`请选择要${action}的文件`);
+    }
+
+    if (!Array.isArray(files)) {
+      throw new ValidationException('文件参数格式错误，应为文件数组');
+    }
+
+    if (files.length === 0) {
       throw new ValidationException(`请选择要${action}的文件`);
     }
   }

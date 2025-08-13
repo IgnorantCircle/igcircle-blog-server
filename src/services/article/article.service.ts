@@ -22,7 +22,8 @@ import {
   ArticleQueryOptions,
 } from './article-query.service';
 import { ArticleStatusService } from './article-status.service';
-
+import { TagService } from '../tag.service';
+import { CategoryService } from '../category.service';
 import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { BlogCacheService } from '@/common/cache/blog-cache.service';
@@ -41,7 +42,10 @@ export class ArticleService extends BaseService<Article> {
     private readonly articleStatusService: ArticleStatusService,
     @Inject(BlogCacheService)
     private readonly blogCacheService: BlogCacheService,
-
+    @Inject(TagService)
+    private readonly tagService: TagService,
+    @Inject(CategoryService)
+    private readonly categoryService: CategoryService,
     @Inject(ConfigService) configService: ConfigService,
     @Inject(StructuredLoggerService) logger: StructuredLoggerService,
   ) {
@@ -78,7 +82,6 @@ export class ArticleService extends BaseService<Article> {
       return this.dataSource.transaction(async (manager) => {
         // 设置默认状态
         const status = articleData.status || 'draft';
-
         // 构建文章创建数据
         const articleCreateData: any = {
           ...articleData,
@@ -98,6 +101,38 @@ export class ArticleService extends BaseService<Article> {
 
         const savedArticle = await manager.save(article);
 
+        // 如果文章已发布，更新标签和分类的文章数量
+        if (savedArticle.status === 'published') {
+          setImmediate(() => {
+            void (async () => {
+              // 更新标签文章数量
+              if (tagIds && tagIds.length > 0) {
+                for (const tagId of tagIds) {
+                  try {
+                    await this.tagService.updateArticleCount(tagId);
+                  } catch (error) {
+                    this.logger.error(
+                      `更新标签文章数量失败: tagId=${tagId}, error=${(error as Error).message || error}`,
+                    );
+                  }
+                }
+              }
+              // 更新分类文章数量
+              if (savedArticle.categoryId) {
+                try {
+                  await this.categoryService.updateArticleCount(
+                    savedArticle.categoryId,
+                  );
+                } catch (error) {
+                  this.logger.error(
+                    `更新分类文章数量失败: categoryId=${savedArticle.categoryId}, error=${(error as Error).message || error}`,
+                  );
+                }
+              }
+            })();
+          });
+        }
+
         return savedArticle;
       });
     } else {
@@ -111,6 +146,7 @@ export class ArticleService extends BaseService<Article> {
 
   // 根据ID查找文章
   async findById(id: string): Promise<Article> {
+    // 查询数据库获取文章
     const article = await this.articleRepository.findOne({
       where: { id },
       relations: ['author', 'tags', 'category'],
@@ -120,10 +156,25 @@ export class ArticleService extends BaseService<Article> {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
+    // 检查是否有该文章的slug缓存，如果没有则缓存
+    const cached = await this.blogCacheService.getArticleDetailBySlug(
+      article.slug,
+    );
+    if (!cached) {
+      await this.blogCacheService.setArticleDetailBySlug(article.slug, article);
+    }
+
     return article;
   }
 
   async findBySlug(slug: string): Promise<Article> {
+    // 先检查slug缓存
+    const cached = await this.blogCacheService.getArticleDetailBySlug(slug);
+    if (cached) {
+      return cached as Article;
+    }
+
+    // 缓存未命中，查询数据库
     const article = await this.articleRepository.findOne({
       where: { slug },
       relations: ['author', 'tags', 'category'],
@@ -133,6 +184,8 @@ export class ArticleService extends BaseService<Article> {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
+    // 缓存结果
+    await this.blogCacheService.setArticleDetailBySlug(slug, article);
     return article;
   }
 
@@ -150,6 +203,8 @@ export class ArticleService extends BaseService<Article> {
       keyword: query.keyword,
       sortBy: query.sortBy || 'createdAt',
       sortOrder: query.sortOrder || 'DESC',
+      includeTags: query.includeTags,
+      includeCategory: query.includeCategory,
     };
 
     return this.articleQueryService.findAllPaginated(options);
@@ -231,7 +286,66 @@ export class ArticleService extends BaseService<Article> {
       );
     }
 
+    if (updatedArticle.status === 'published') {
+      updatedArticle.publishedAt = updatedArticle.publishedAt ?? new Date();
+    }
     const savedArticle = await this.repository.save(updatedArticle);
+
+    // 如果文章已发布，更新标签和分类的文章数量
+    if (savedArticle.status === 'published') {
+      setImmediate(() => {
+        void (async () => {
+          // 更新标签文章数量（如果是UpdateArticleDto类型且包含tagIds）
+          if (
+            isUpdateDto &&
+            'tagIds' in updateDataOrDto &&
+            updateDataOrDto.tagIds !== undefined
+          ) {
+            const tagIds = updateDataOrDto.tagIds;
+            // 获取原文章的标签ID
+            const originalTagIds = article.tags?.map((tag) => tag.id) || [];
+            // 合并所有需要更新的标签ID（包括新的和原来的）
+            const allTagIds = [
+              ...new Set([...tagIds, ...originalTagIds]),
+            ] as string[];
+
+            if (allTagIds.length > 0) {
+              for (const tagId of allTagIds) {
+                try {
+                  await this.tagService.updateArticleCount(tagId);
+                } catch (error) {
+                  this.logger.error(
+                    `更新标签文章数量失败: tagId=${tagId}, error=${(error as Error).message || error}`,
+                  );
+                }
+              }
+            }
+          }
+
+          // 更新分类文章数量（如果分类发生变化或文章状态变化）
+          const categoryIds = new Set<string>();
+          if (savedArticle.categoryId) {
+            categoryIds.add(savedArticle.categoryId);
+          }
+          if (
+            article.categoryId &&
+            article.categoryId !== savedArticle.categoryId
+          ) {
+            categoryIds.add(article.categoryId);
+          }
+
+          for (const categoryId of categoryIds) {
+            try {
+              await this.categoryService.updateArticleCount(categoryId);
+            } catch (error) {
+              this.logger.error(
+                `更新分类文章数量失败: categoryId=${categoryId}, error=${(error as Error).message || error}`,
+              );
+            }
+          }
+        })();
+      });
+    }
 
     return savedArticle;
   }
@@ -247,13 +361,72 @@ export class ArticleService extends BaseService<Article> {
     return this.articleStatisticsService.incrementViews(id);
   }
 
+  /**
+   * 记录文章浏览，避免重复计数
+   * @param articleId 文章ID
+   * @param userId 用户ID（可选）
+   * @param ipAddress IP地址
+   * @param userAgent 用户代理
+   * @param isAdmin 是否为管理员
+   * @returns 是否为新的浏览记录
+   */
+  async recordView(
+    articleId: string,
+    userId: string | null,
+    ipAddress: string,
+    userAgent: string | null,
+    isAdmin: boolean = false,
+  ): Promise<boolean> {
+    return this.articleStatisticsService.recordView(
+      articleId,
+      userId,
+      ipAddress,
+      userAgent,
+      isAdmin,
+    );
+  }
+
   async like(id: string): Promise<void> {
     return this.articleStatisticsService.like(id);
   }
 
   async remove(id: string): Promise<void> {
-    await this.findById(id);
+    const article = await this.findById(id);
+
+    // 获取文章关联的标签ID
+    const tagIds = article.tags?.map((tag) => tag.id) || [];
+
     await this.articleRepository.softDelete(id);
+
+    // 如果文章已发布，更新标签和分类的文章数量
+    if (article.status === 'published') {
+      setImmediate(() => {
+        void (async () => {
+          // 更新标签文章数量
+          if (tagIds.length > 0) {
+            for (const tagId of tagIds) {
+              try {
+                await this.tagService.updateArticleCount(tagId);
+              } catch (error) {
+                this.logger.error(
+                  `删除文章后更新标签文章数量失败: tagId=${tagId}, error=${(error as Error).message || error}`,
+                );
+              }
+            }
+          }
+          // 更新分类文章数量
+          if (article.categoryId) {
+            try {
+              await this.categoryService.updateArticleCount(article.categoryId);
+            } catch (error) {
+              this.logger.error(
+                `删除文章后更新分类文章数量失败: categoryId=${article.categoryId}, error=${(error as Error).message || error}`,
+              );
+            }
+          }
+        })();
+      });
+    }
   }
 
   async getPopular(limit: number = 10): Promise<Article[]> {
@@ -396,7 +569,7 @@ export class ArticleService extends BaseService<Article> {
     await this.articleRepository.update(
       publishableArticles.map((article) => article.id),
       {
-        status: 'published',
+        status: ArticleStatus.PUBLISHED,
         publishedAt: publishDate,
         updatedAt: new Date(),
       },
@@ -479,6 +652,11 @@ export class ArticleService extends BaseService<Article> {
       case 'csv':
         return this.convertToCSV(articles);
       case 'markdown':
+        // 如果是多篇文章，返回每篇文章的独立markdown内容
+        if (articles.length > 1) {
+          return this.convertToMarkdownFiles(articles);
+        }
+        // 单篇文章仍然返回字符串
         return this.convertToMarkdown(articles);
       case 'json':
       default:
@@ -592,6 +770,63 @@ export class ArticleService extends BaseService<Article> {
         return markdown;
       })
       .join('\n\n---\n\n');
+  }
+
+  private convertToMarkdownFiles(articles: Article[]): { files: { filename: string; content: string }[] } {
+    interface ArticleWithRelations {
+      id: string;
+      title: string;
+      summary?: string;
+      slug: string;
+      status: string;
+      author?: { username?: string };
+      category?: { name?: string };
+      tags?: { name?: string }[];
+      content?: string;
+      createdAt?: Date;
+      publishedAt?: Date;
+    }
+
+    const files = (articles as ArticleWithRelations[]).map((article) => {
+      let markdown = `# ${article.title}\n\n`;
+
+      if (article.summary) {
+        markdown += `**摘要**: ${article.summary}\n\n`;
+      }
+
+      markdown += `**状态**: ${article.status}\n`;
+      markdown += `**作者**: ${article.author?.username || '未知'}\n`;
+
+      if (article.category) {
+        markdown += `**分类**: ${article.category.name}\n`;
+      }
+
+      if (article.tags && article.tags.length > 0) {
+        markdown += `**标签**: ${article.tags.map((tag) => tag.name).join(', ')}\n`;
+      }
+
+      markdown += `**创建时间**: ${article.createdAt?.toISOString() || ''}\n`;
+
+      if (article.publishedAt) {
+        markdown += `**发布时间**: ${article.publishedAt.toISOString()}\n`;
+      }
+
+      if (article.content) {
+        markdown += `\n---\n\n${article.content}`;
+      }
+
+      // 使用slug作为文件名，如果没有slug则使用标题
+      const filename = article.slug
+        ? `${article.slug}.md`
+        : `${article.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')}.md`;
+      
+      return {
+        filename,
+        content: markdown,
+      };
+    });
+
+    return { files };
   }
 
   async getFeatured(limit: number = 10): Promise<Article[]> {

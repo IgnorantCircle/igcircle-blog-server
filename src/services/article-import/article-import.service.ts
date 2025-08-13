@@ -87,7 +87,7 @@ export class ArticleImportService {
    * 获取导入进度
    */
   async getImportProgress(taskId: string): Promise<ImportProgressDto | null> {
-    return this.importProgressService.getImportProgress(taskId);
+    return  await this.importProgressService.getImportProgress(taskId);
   }
 
   /**

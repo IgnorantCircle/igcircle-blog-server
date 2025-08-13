@@ -169,7 +169,8 @@ export class CategoryService extends BaseService<Category> {
   /**
    * 根据ID查找分类（重写BaseService方法以包含关联数据）
    */
-  async findById(id: string, includeRelations = true): Promise<Category> {
+  //includeRelations = true （默认值） ：会加载标签的关联文章数据
+  async findById(id: string, includeRelations = false): Promise<Category> {
     if (!includeRelations) {
       const category = await super.findById(id);
       if (!category) {
@@ -340,16 +341,22 @@ export class CategoryService extends BaseService<Category> {
   }
 
   async updateArticleCount(categoryId: string): Promise<void> {
-    const count = await this.categoryRepository
-      .createQueryBuilder('category')
-      .leftJoin('category.articles', 'article')
-      .where('category.id = :categoryId', { categoryId })
-      .andWhere('category.deletedAt IS NULL')
-      .andWhere('article.status = :status', { status: ArticleStatus.PUBLISHED })
-      .andWhere('article.deletedAt IS NULL')
-      .getCount();
+    const actualCount = await this.categoryRepository.manager
+      .createQueryBuilder()
+      .select('COUNT(articles.id)', 'count')
+      .from('articles', 'articles')
+      .where('articles.categoryId = :categoryId', { categoryId })
+      .andWhere('articles.status = :status', {
+        status: ArticleStatus.PUBLISHED,
+      })
+      .andWhere('articles.deletedAt IS NULL')
+      .andWhere('articles.isVisible = true')
+      .getRawOne()
+      .then((result) => parseInt((result as { count: string }).count) || 0);
 
-    await this.categoryRepository.update(categoryId, { articleCount: count });
+    await this.categoryRepository.update(categoryId, {
+      articleCount: actualCount,
+    });
   }
 
   async findOrCreate(name: string): Promise<Category> {

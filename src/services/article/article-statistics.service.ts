@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Article } from '@/entities/article.entity';
 import { ArticleStatus } from '@/dto/article.dto';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
+import { ArticleViewService } from './article-view.service';
 
 @Injectable()
 export class ArticleStatisticsService {
@@ -12,15 +13,43 @@ export class ArticleStatisticsService {
     private readonly articleRepository: Repository<Article>,
     @Inject(StructuredLoggerService)
     private readonly logger: StructuredLoggerService,
+    @Inject(ArticleViewService)
+    private readonly articleViewService: ArticleViewService,
   ) {
     this.logger.setContext({ module: 'ArticleStatisticsService' });
   }
 
   /**
-   * 增加文章浏览量
+   * 增加文章浏览量（已废弃，使用recordView代替）
+   * @deprecated 使用 recordView 方法代替
    */
   async incrementViews(id: string): Promise<void> {
     await this.articleRepository.increment({ id }, 'viewCount', 1);
+  }
+
+  /**
+   * 记录文章浏览，避免重复计数
+   * @param articleId 文章ID
+   * @param userId 用户ID（可选）
+   * @param ipAddress IP地址
+   * @param userAgent 用户代理
+   * @param isAdmin 是否为管理员
+   * @returns 是否为新的浏览记录
+   */
+  async recordView(
+    articleId: string,
+    userId: string | null,
+    ipAddress: string,
+    userAgent: string | null,
+    isAdmin: boolean = false,
+  ): Promise<boolean> {
+    return this.articleViewService.recordView(
+      articleId,
+      userId,
+      ipAddress,
+      userAgent,
+      isAdmin,
+    );
   }
 
   /**
