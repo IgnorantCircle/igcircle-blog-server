@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Request,
   UseInterceptors,
+  Logger,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -13,6 +14,8 @@ import { JwtService } from '@nestjs/jwt';
 import { UserService } from '@/services/user.service';
 import { EmailService } from '@/services/email.service';
 import { RsaService } from '@/services/rsa.service';
+import { BlogCacheService } from '@/common/cache/blog-cache.service';
+import { v4 as uuidv4 } from 'uuid';
 import { Public } from '@/decorators/public.decorator';
 import { CurrentUser } from '@/decorators/user.decorator';
 import {
@@ -30,7 +33,7 @@ import {
   VerificationCodeResponseDto,
   LogoutResponseDto,
 } from '@/dto/auth.dto';
-import { CreateUserDto, UserStatus } from '@/dto/user.dto';
+import { CreateUserDto } from '@/dto/user.dto';
 import {
   BusinessException,
   UnauthorizedException,
@@ -42,11 +45,14 @@ import { ErrorCode } from '@/common/constants/error-codes';
 @Controller('/auth')
 @UseInterceptors(FieldVisibilityInterceptor)
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
     private readonly rsaService: RsaService,
+    private readonly cacheService: BlogCacheService,
   ) {}
 
   @Post('login')
@@ -99,13 +105,28 @@ export class AuthController {
     }
 
     // 生成JWT token
+    const tokenId = uuidv4();
     const payload = {
       sub: user.id,
       username: user.username,
       email: user.email,
       role: user.role,
+      jti: tokenId,
     };
     const accessToken = this.jwtService.sign(payload);
+
+    // 将token存储到缓存中
+    const decoded: unknown = this.jwtService.decode(accessToken);
+    if (decoded && typeof decoded === 'object' && 'exp' in decoded) {
+      const expiresAt = (decoded as { exp: number }).exp * 1000; // 转换为毫秒
+      await this.cacheService.setUserToken(
+        user.id,
+        tokenId,
+        accessToken,
+        expiresAt,
+        'web-login',
+      );
+    }
 
     return {
       success: true,
@@ -247,24 +268,21 @@ export class AuthController {
     const token = this.extractTokenFromHeader(req);
     if (token) {
       try {
-        const decoded = this.jwtService.decode(token);
-        if (
-          decoded &&
-          typeof decoded === 'object' &&
-          'exp' in decoded &&
-          typeof decoded.exp === 'number'
-        ) {
+        interface DecodedToken {
+          exp?: number;
+        }
+        const decoded: unknown = this.jwtService.decode(token);
+        if (decoded && typeof decoded === 'object' && 'exp' in decoded) {
           const now = Math.floor(Date.now() / 1000);
-          const expiresIn = decoded.exp - now;
+          const expiresIn = (decoded as DecodedToken).exp! - now;
 
           if (expiresIn > 0) {
             // 将token添加到黑名单
             await this.userService.blacklistToken(token, expiresIn);
           }
         }
-      } catch (error) {
-        // 如果token解析失败，忽略错误（可能已经是无效token）
-        // 可以在这里记录日志用于调试
+      } catch {
+        this.logger.error('Invalid token', 'AuthService.logout');
       }
     }
 

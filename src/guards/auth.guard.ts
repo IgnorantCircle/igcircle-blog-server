@@ -60,6 +60,11 @@ export class JwtAuthGuard implements CanActivate {
       } catch (error) {
         // 黑名单检查失败时记录日志但不阻止认证
         console.warn('Token blacklist check failed:', error);
+        // 如果是UnauthorizedException，则重新抛出
+        if (error instanceof UnauthorizedException) {
+          throw error;
+        }
+        // 其他错误不阻止认证流程
       }
 
       // 检查用户是否被强制退出

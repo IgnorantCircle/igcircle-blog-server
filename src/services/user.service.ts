@@ -211,13 +211,8 @@ export class UserService extends BaseService<User> {
   async isTokenBlacklisted(token: string): Promise<boolean> {
     try {
       // 从token中提取用户ID和tokenId
-      const decoded = this.jwtService.decode(token) as JwtPayload | null;
-      if (
-        !decoded ||
-        typeof decoded !== 'object' ||
-        !decoded.sub ||
-        !decoded.jti
-      ) {
+      const decoded = this.jwtService.decode(token);
+      if (!decoded || typeof decoded !== 'object' || !decoded.sub) {
         this.logger.warn('无效的token格式', {
           action: 'check_token_blacklist',
           resource: 'token',
@@ -473,7 +468,7 @@ export class UserService extends BaseService<User> {
   async blacklistToken(token: string, expiresIn: number): Promise<void> {
     try {
       // 从token中提取用户ID和tokenId，然后清除该token
-      const decoded = this.jwtService.decode(token) as JwtPayload | null;
+      const decoded = this.jwtService.decode(token);
       if (
         decoded &&
         typeof decoded === 'object' &&
