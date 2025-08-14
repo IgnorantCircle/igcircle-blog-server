@@ -25,7 +25,6 @@ import { Role } from '@/enums/role.enum';
 import { ArticleImportService } from '@/services/article-import/article-import.service';
 import {
   ArticleImportConfigDto,
-  ArticleImportResponseDto,
   StartImportResponseDto,
   ImportProgressDto,
 } from '@/dto/article-import.dto';
@@ -37,46 +36,18 @@ import {
 import { ErrorCode } from '@/common/constants/error-codes';
 
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
+import type { Express } from 'express';
 import {
   FieldVisibilityInterceptor,
   UseAdminVisibility,
 } from '@/common/interceptors/field-visibility.interceptor';
 import { ArticleParserService } from '@/services/article-import/article-parser.service';
-
-/**
- * 文章导入配置原始数据接口
- * 用于接收multipart/form-data中的配置数据
- */
-interface RawImportConfigData {
-  defaultCategory?: string;
-  defaultTags?: string; // 逗号分隔的字符串
-  autoPublish?: string | boolean;
-  overwriteExisting?: string | boolean;
-  importMode?: string;
-  skipInvalidFiles?: string | boolean;
-}
-
-/**
- * 文件验证结果项接口
- */
-interface FileValidationResultItem {
-  filename: string;
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-  title?: string;
-  hasContent: boolean;
-}
-
-/**
- * 文件验证响应接口
- */
-interface FileValidationResponse {
-  totalFiles: number;
-  validFiles: number;
-  invalidFiles: number;
-  results: FileValidationResultItem[];
-}
+import { FileValidationService } from '@/services/article-import/common/file-validation.service';
+import type { FileValidationResponse } from '@/services/article-import/common/file-validation.service';
+import {
+  ConfigValidationService,
+  RawImportConfigData,
+} from '@/services/article-import/common/config-validation.service';
 
 @ApiTags('管理端 - 文章导入')
 @Controller('admin/articles/import')
@@ -88,6 +59,8 @@ export class ArticleImportController {
   constructor(
     private readonly articleImportService: ArticleImportService,
     private readonly articleParserService: ArticleParserService,
+    private readonly fileValidationService: FileValidationService,
+    private readonly configValidationService: ConfigValidationService,
   ) {}
 
   /**
@@ -196,8 +169,8 @@ export class ArticleImportController {
   @ApiBody(ArticleImportController.IMPORT_API_BODY_SCHEMA)
   @ApiResponse({
     status: 200,
-    description: '导入成功',
-    type: ArticleImportResponseDto,
+    description: '导入任务已开始',
+    type: StartImportResponseDto,
   })
   @ApiResponse(ArticleImportController.COMMON_API_RESPONSES[0])
   @ApiResponse(ArticleImportController.COMMON_API_RESPONSES[1])
@@ -209,65 +182,25 @@ export class ArticleImportController {
     @UploadedFiles() files: Express.Multer.File[],
     @Body() configData: any,
     @CurrentUser() user: User,
-  ): Promise<ArticleImportResponseDto> {
-    // 将files对象转换为数组（如果需要）
-    const filesArray = Array.isArray(files)
-      ? files
-      : Object.values(files || {});
-
-    // 验证文件和解析配置
-    const config = this.validateFilesAndParseConfig(
-      filesArray,
-      configData,
-      '导入',
-    );
-
-    // 开始同步导入
-    return await this.articleImportService.importArticles(
-      filesArray,
-      user.id,
-      config,
-    );
-  }
-
-  @Post('async')
-  @ApiOperation({ summary: '异步导入文章' })
-  @ApiConsumes('multipart/form-data')
-  @ApiBody(ArticleImportController.IMPORT_API_BODY_SCHEMA)
-  @ApiResponse({
-    status: 200,
-    description: '导入任务已开始',
-    type: StartImportResponseDto,
-  })
-  @ApiResponse(ArticleImportController.COMMON_API_RESPONSES[0])
-  @ApiResponse(ArticleImportController.COMMON_API_RESPONSES[1])
-  @ApiResponse(ArticleImportController.COMMON_API_RESPONSES[2])
-  @UseInterceptors(
-    FilesInterceptor('files', 100, ArticleImportController.FILE_UPLOAD_CONFIG),
-  )
-  async importArticlesAsync(
-    @UploadedFiles() files: Express.Multer.File[],
-    @Body() configData: any,
-    @CurrentUser() user: User,
   ): Promise<StartImportResponseDto> {
-    // 将files对象转换为数组（如果需要）
-    const filesArray = Array.isArray(files)
-      ? files
-      : Object.values(files || {});
-
-    // 验证文件和解析配置
-    const config = this.validateFilesAndParseConfig(
-      filesArray,
-      configData,
+    // 验证文件格式
+    const { filesArray } = this.fileValidationService.validateFiles(
+      files,
       '导入',
     );
 
-    // 开始异步导入
-    return await this.articleImportService.startImportArticles(
+    // 解析并验证配置
+    const config =
+      this.configValidationService.parseAndValidateConfig(configData);
+
+    // 启动异步导入任务
+    const result = await this.articleImportService.startImportArticles(
       filesArray,
       user.id,
       config,
     );
+
+    return result;
   }
 
   @Get('progress/:taskId')
@@ -281,10 +214,8 @@ export class ArticleImportController {
     status: 404,
     description: '任务不存在',
   })
-  async getImportProgress(
-    @Param('taskId') taskId: string,
-  ): Promise<ImportProgressDto> {
-    const progress = await this.articleImportService.getImportProgress(taskId);
+  getImportProgress(@Param('taskId') taskId: string): ImportProgressDto {
+    const progress = this.articleImportService.getImportProgress(taskId);
     if (!progress) {
       throw new NotFoundException(
         ErrorCode.COMMON_NOT_FOUND,
@@ -350,50 +281,14 @@ export class ArticleImportController {
   validateFiles(
     @UploadedFiles() files: Express.Multer.File[],
   ): FileValidationResponse {
-    // 将files对象转换为数组（如果需要）
-    const filesArray = Array.isArray(files)
-      ? files
-      : Object.values(files || {});
-    this.validateFiles_Internal(filesArray, '验证');
+    // 使用公共验证服务
+    const { validation } = this.fileValidationService.validateFiles(
+      files,
+      '验证',
+      true, // 启用内容验证
+    );
 
-    const results = filesArray.map((file): FileValidationResultItem => {
-      try {
-        const content = file.buffer.toString('utf-8');
-        const validation = this.articleParserService.validateAndParseFile(
-          content,
-          file.originalname,
-        );
-
-        return {
-          filename: file.originalname,
-          isValid: validation.isValid,
-          errors: validation.errors,
-          warnings: validation.warnings,
-          title: validation.data?.title,
-          hasContent: Boolean(validation.data?.content?.trim()),
-        };
-      } catch (error) {
-        return {
-          filename: file.originalname,
-          isValid: false,
-          errors: [error instanceof Error ? error.message : '验证失败'],
-          warnings: [],
-          title: undefined,
-          hasContent: false,
-        };
-      }
-    });
-
-    const validFiles = results.filter((r) => r.isValid).length;
-    const invalidFiles = results.filter((r) => !r.isValid).length;
-
-    const result = {
-      totalFiles: filesArray.length,
-      validFiles,
-      invalidFiles,
-      results,
-    };
-    return result;
+    return validation!;
   }
 
   /**

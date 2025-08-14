@@ -86,8 +86,8 @@ export class ArticleImportService {
   /**
    * 获取导入进度
    */
-  async getImportProgress(taskId: string): Promise<ImportProgressDto | null> {
-    return  await this.importProgressService.getImportProgress(taskId);
+  getImportProgress(taskId: string): ImportProgressDto | null {
+    return this.importProgressService.getImportProgress(taskId);
   }
 
   /**
@@ -105,7 +105,12 @@ export class ArticleImportService {
       // 更新状态为处理中
       await this.importProgressService.markAsProcessing(taskId);
 
-      const result = await this.importArticles(files, authorId, config, taskId);
+      const result = await this.processImportTask(
+        files,
+        authorId,
+        config,
+        taskId,
+      );
 
       this.logger.log(
         `导入任务 ${taskId} 完成，成功: ${result.successCount}，失败: ${result.failureCount}，跳过: ${result.skippedCount}`,
@@ -138,9 +143,9 @@ export class ArticleImportService {
   }
 
   /**
-   * 导入文章
+   * 处理导入任务
    */
-  private async importArticles(
+  private async processImportTask(
     files: Express.Multer.File[],
     authorId: string,
     config: ArticleImportConfigDto = {},
@@ -183,71 +188,128 @@ export class ArticleImportService {
   }> {
     const results: ArticleImportResultDto[] = [];
     const counters = { successCount: 0, failureCount: 0, skippedCount: 0 };
+    const batchSize = 5; // 批量处理大小
+    const maxConcurrency = 3; // 最大并发数
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileName = this.articleParserService.decodeFileName(
-        file.originalname,
-      );
+    // 分批处理文件
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize);
 
-      // 更新当前处理的文件
-      if (taskId) {
-        await this.importProgressService.updateCurrentFile(
-          taskId,
-          fileName,
-          i,
-          files.length,
+      // 并发处理当前批次，但限制并发数
+      const batchPromises = batch.map(async (file, batchIndex) => {
+        const globalIndex = i + batchIndex;
+        const fileName = this.articleParserService.decodeFileName(
+          file.originalname,
         );
-      }
 
-      try {
-        const result = await this.processFile(file, authorId, config);
-        results.push(result);
-        this.updateCounters(result, counters);
-
-        // 更新进度
+        // 更新当前处理的文件
         if (taskId) {
-          await this.importProgressService.updateProgressAfterFile(
+          await this.importProgressService.updateCurrentFile(
             taskId,
-            i + 1,
+            fileName,
+            globalIndex,
             files.length,
-            counters,
-            startTime,
           );
         }
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : '未知错误';
-        this.logger.warn(`处理文件 ${fileName} 时发生错误: ${errorMessage}`, {
-          metadata: { fileName, error: errorMessage },
-        });
 
-        results.push({
-          filePath: fileName,
-          success: false,
-          error: errorMessage,
-        });
-        counters.failureCount++;
+        try {
+          const result = await this.processFile(file, authorId, config);
+          return { result, index: globalIndex };
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : '未知错误';
+          this.logger.warn(`处理文件 ${fileName} 时发生错误: ${errorMessage}`, {
+            metadata: { fileName, error: errorMessage },
+          });
 
-        // 更新进度
-        if (taskId) {
-          await this.importProgressService.updateProgressAfterFile(
-            taskId,
-            i + 1,
-            files.length,
-            counters,
-            startTime,
-          );
+          return {
+            result: this.importValidationService.createErrorResult(
+              fileName,
+              errorMessage,
+            ),
+            index: globalIndex,
+          };
+        }
+      });
+
+      // 限制并发执行
+      const batchResults = await this.executeConcurrentlyWithLimit(
+        batchPromises,
+        maxConcurrency,
+      );
+
+      // 处理批次结果
+      for (const { result } of batchResults) {
+        results.push(result);
+        this.updateCounters(result, counters);
+      }
+
+      // 更新整体进度
+      if (taskId) {
+        const processedCount = Math.min(i + batchSize, files.length);
+        await this.importProgressService.updateProgressAfterFile(
+          taskId,
+          processedCount,
+          files.length,
+          counters,
+          startTime,
+        );
+      }
+    }
+
+    return { results, ...counters };
+  }
+
+  /**
+   * 限制并发执行Promise数组
+   */
+  private async executeConcurrentlyWithLimit<T>(
+    promises: Promise<T>[],
+    limit: number,
+  ): Promise<T[]> {
+    const results: T[] = [];
+
+    for (let i = 0; i < promises.length; i += limit) {
+      const batch = promises.slice(i, i + limit);
+      const batchResults = await Promise.allSettled(batch);
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+        } else {
+          this.logger.error('批量处理中的Promise执行失败', result.reason);
+          // 这里可以根据需要处理失败的情况
         }
       }
     }
 
-    return {
-      results,
-      successCount: counters.successCount,
-      failureCount: counters.failureCount,
-      skippedCount: counters.skippedCount,
-    };
+    return results;
+  }
+
+  /**
+   * 处理单个文件时的错误处理
+   */
+  private handleFileProcessingError(
+    fileName: string,
+    error: unknown,
+    results: ArticleImportResultDto[],
+    counters: {
+      successCount: number;
+      failureCount: number;
+      skippedCount: number;
+    },
+  ): void {
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    this.logger.warn(`处理文件 ${fileName} 时发生错误: ${errorMessage}`, {
+      metadata: { fileName, error: errorMessage },
+    });
+
+    results.push({
+      filePath: fileName,
+      success: false,
+      error: errorMessage,
+    });
+    counters.failureCount++;
   }
 
   /**
@@ -479,21 +541,10 @@ export class ArticleImportService {
   }
 
   /**
-   * 同步导入方法，直接调用异步导入并等待完成
+   * 清理过期的进度记录
    */
-  async importArticlesSync(
-    files: Express.Multer.File[],
-    authorId: string,
-    config: ArticleImportConfigDto = {},
-  ): Promise<ArticleImportResponseDto> {
-    return this.importArticles(files, authorId, config);
-  }
-
-  /**
-   * 清理过期的导入进度
-   */
-  async cleanupExpiredProgress(): Promise<void> {
-    return this.importProgressService.cleanupExpiredProgress();
+  cleanupExpiredProgress(): void {
+    this.importProgressService.cleanupExpiredProgress();
   }
 
   /**
@@ -511,7 +562,7 @@ export class ArticleImportService {
   /**
    * 取消导入任务
    */
-  async cancelImportTask(taskId: string): Promise<boolean> {
+  cancelImportTask(taskId: string): boolean {
     return this.importProgressService.cancelImportTask(taskId);
   }
 }

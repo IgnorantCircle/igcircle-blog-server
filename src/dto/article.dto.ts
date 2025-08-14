@@ -34,7 +34,9 @@ export enum ArticleStatus {
   PUBLISHED = 'published',
   ARCHIVED = 'archived',
 }
-
+/**
+ * 创建文章DTO
+ */
 export class CreateArticleDto extends BaseCreateDto {
   @ApiProperty({
     description: '文章标题',
@@ -293,6 +295,12 @@ export class ArticleQueryDto extends BaseQueryDto {
   })
   status?: ArticleStatus;
 
+  @ApiPropertyOptional({ description: '是否可见' })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isVisible?: boolean;
+
   @ApiPropertyOptional({
     description: '是否精选',
     example: true,
@@ -398,6 +406,32 @@ export class ArticleQueryDto extends BaseQueryDto {
   })
   @Type(() => Boolean)
   includeCategory?: boolean;
+
+  @ApiPropertyOptional({
+    description: '发布开始日期（用于日期区间搜索）',
+    example: '2023-01-01',
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    {
+      message: VALIDATION_MESSAGES.INVALID_DATE,
+    },
+  )
+  publishedAtStart?: string;
+
+  @ApiPropertyOptional({
+    description: '发布结束日期（用于日期区间搜索）',
+    example: '2023-12-31',
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    {
+      message: VALIDATION_MESSAGES.INVALID_DATE,
+    },
+  )
+  publishedAtEnd?: string;
 }
 
 export class ArticleSearchDto extends BaseQueryDto {

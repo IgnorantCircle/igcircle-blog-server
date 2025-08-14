@@ -5,6 +5,8 @@ import { ArticleImportService } from '@/services/article-import/article-import.s
 import { ArticleParserService } from '@/services/article-import/article-parser.service';
 import { ImportProgressService } from '@/services/article-import/import-progress.service';
 import { ImportValidationService } from '@/services/article-import/import-validation.service';
+import { FileValidationService } from '@/services/article-import/common/file-validation.service';
+import { ConfigValidationService } from '@/services/article-import/common/config-validation.service';
 import { AuthModule } from '@/modules/auth.module';
 import { ArticleModule } from '@/modules/article.module';
 import { TagModule } from '@/modules/tag.module';
@@ -28,6 +30,8 @@ import { User } from '@/entities/user.entity';
     ArticleParserService,
     ImportProgressService,
     ImportValidationService,
+    FileValidationService,
+    ConfigValidationService,
   ],
   exports: [ArticleImportService],
 })
