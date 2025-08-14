@@ -10,7 +10,6 @@ import { CategoryService } from '../category.service';
 import {
   NotFoundException,
   ConflictException,
-  ForbiddenException,
 } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
 
@@ -361,66 +360,6 @@ export class ArticleStatusService {
         count: archivableArticles.length,
         articleIds: archivableArticles.map((a) => a.id),
       },
-    });
-  }
-
-  /**
-   * 作者发布文章
-   */
-  async publishByAuthor(
-    id: string,
-    authorId: string,
-    publishDto?: { publishedAt?: Date },
-  ): Promise<Article> {
-    const article = await this.articleRepository.findOne({
-      where: { id, authorId },
-    });
-    if (!article) {
-      throw new ForbiddenException(
-        ErrorCode.ARTICLE_ACCESS_DENIED,
-        '文章不存在或无权限',
-      );
-    }
-
-    if (article.status === 'published') {
-      throw new ConflictException(
-        ErrorCode.ARTICLE_INVALID_STATUS,
-        '文章已经发布',
-      );
-    }
-
-    article.status = 'published';
-    article.publishedAt = publishDto?.publishedAt || new Date();
-    article.updatedAt = new Date();
-
-    const updatedArticle = await this.articleRepository.save(article);
-
-    this.logger.log('作者发布文章成功', {
-      metadata: { articleId: id, authorId, title: article.title },
-    });
-
-    return updatedArticle;
-  }
-
-  /**
-   * 根据作者删除文章
-   */
-  async removeByAuthor(id: string, authorId: string): Promise<void> {
-    const article = await this.articleRepository.findOne({
-      where: { id, authorId },
-    });
-
-    if (!article) {
-      throw new ForbiddenException(
-        ErrorCode.ARTICLE_ACCESS_DENIED,
-        '文章不存在或您没有权限',
-      );
-    }
-
-    await this.articleRepository.delete(id);
-
-    this.logger.log('作者删除文章成功', {
-      metadata: { articleId: id, authorId, title: article.title },
     });
   }
 

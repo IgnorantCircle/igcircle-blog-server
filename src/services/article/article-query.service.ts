@@ -638,8 +638,6 @@ export class ArticleQueryService extends BaseService<Article> {
       publishedAtEnd,
     } = filters;
 
-    console.log('filters:', filters);
-
     // 调试日志：打印年月筛选参数
     if (year || month) {
       this.logger.log('年月筛选参数', {

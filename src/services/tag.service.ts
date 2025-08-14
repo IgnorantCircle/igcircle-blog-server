@@ -281,7 +281,10 @@ export class TagService extends BaseService<Tag> {
     }
 
     // 使用BaseService的softRemove方法
-    await super.remove(id);
+    await super.softRemove(id);
+
+    // 清除标签缓存
+    await this.blogCacheService.clearTagCache();
   }
 
   async getPopular(query: PopularTagsDto): Promise<Tag[]> {

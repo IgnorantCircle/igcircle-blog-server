@@ -459,7 +459,53 @@ export class ArticleService extends BaseService<Article> {
   }
 
   async batchRemove(ids: string[]): Promise<void> {
-    await this.articleRepository.delete(ids);
+    // 获取要删除的文章信息，用于后续更新关联数据
+    const articles = await this.articleRepository.find({
+      where: { id: In(ids) },
+      relations: ['tags', 'category'],
+    });
+    for (const id of ids) {
+      await this.softRemove(id);
+    }
+
+    // 异步更新关联的标签和分类文章数量
+    setImmediate(() => {
+      void (async () => {
+        for (const article of articles) {
+          // 只处理已发布的文章
+          if (article.status === 'published') {
+            // 更新标签文章数量
+            if (article.tags && article.tags.length > 0) {
+              for (const tag of article.tags) {
+                try {
+                  await this.tagService.updateArticleCount(tag.id);
+                } catch (error) {
+                  this.logger.error(
+                    `批量删除文章后更新标签文章数量失败: tagId=${tag.id}, error=${(error as Error).message || error}`,
+                  );
+                }
+              }
+            }
+
+            // 更新分类文章数量
+            if (article.categoryId) {
+              try {
+                await this.categoryService.updateArticleCount(
+                  article.categoryId,
+                );
+              } catch (error) {
+                this.logger.error(
+                  `批量删除文章后更新分类文章数量失败: categoryId=${article.categoryId}, error=${(error as Error).message || error}`,
+                );
+              }
+            }
+          }
+        }
+
+        // 清除相关缓存
+        await this.blogCacheService.clearArticleCache();
+      })();
+    });
   }
 
   async batchPublish(ids: string[]): Promise<void> {
@@ -863,77 +909,6 @@ export class ArticleService extends BaseService<Article> {
     }
 
     return article;
-  }
-
-  async updateByAuthor(
-    id: string,
-    authorId: string,
-    updateArticleDto: UpdateArticleDto,
-  ): Promise<Article> {
-    const article = await this.findByIdAndAuthor(id, authorId);
-
-    // 检查slug冲突
-    if (updateArticleDto.slug && updateArticleDto.slug !== article.slug) {
-      const existingArticle = await this.articleRepository.findOne({
-        where: { slug: updateArticleDto.slug, id: Not(id) },
-      });
-      if (existingArticle) {
-        throw new ConflictException(ErrorCode.ARTICLE_SLUG_EXISTS);
-      }
-    }
-
-    // 处理标签关联
-    if (updateArticleDto.tagIds !== undefined) {
-      if (updateArticleDto.tagIds.length > 0) {
-        const tags = await this.dataSource.getRepository(Tag).find({
-          where: { id: In(updateArticleDto.tagIds) },
-        });
-        article.tags = tags;
-      } else {
-        article.tags = [];
-      }
-    }
-
-    // 限制作者只能修改特定字段
-    const allowedFields = [
-      'title',
-      'summary',
-      'content',
-      'slug',
-      'coverImage',
-      'metaDescription',
-      'metaKeywords',
-      'socialImage',
-      'allowComments',
-      'categoryId',
-    ];
-
-    const filteredUpdateData: { [key: string]: any } = {};
-    for (const field of allowedFields) {
-      if (
-        updateArticleDto[field as keyof typeof updateArticleDto] !== undefined
-      ) {
-        filteredUpdateData[field] =
-          updateArticleDto[field as keyof typeof updateArticleDto];
-      }
-    }
-
-    const updatedArticle = this.repository.merge(article, filteredUpdateData);
-    const savedArticle = await this.repository.save(updatedArticle);
-
-    return savedArticle;
-  }
-
-  async publishByAuthor(
-    id: string,
-    authorId: string,
-    publishDto?: { publishedAt?: Date },
-  ): Promise<Article> {
-    return this.articleStatusService.publishByAuthor(id, authorId, publishDto);
-  }
-
-  async removeByAuthor(id: string, authorId: string): Promise<void> {
-    return this.articleStatusService.removeByAuthor(id, authorId);
   }
 
   // 获取热门标签（基于文章数量）
