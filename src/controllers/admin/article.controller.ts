@@ -22,6 +22,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ArticleService } from '@/services/article/article.service';
+import { ArticleStatisticsService } from '@/services/article/article-statistics.service';
 
 import { RolesGuard } from '@/guards/roles.guard';
 import { Roles } from '@/decorators/roles.decorator';
@@ -57,28 +58,11 @@ interface CurrentUserType {
   role: string;
 }
 
-interface TagStatsRaw {
-  name: string;
-  articleCount: string;
-}
-
-interface CategoryStatsRaw {
-  name: string;
-  count: string;
-}
-
-interface MonthlyStatsRaw {
-  month: string;
-  articles: string;
-  views: string;
-}
-
-interface TotalStatsRaw {
-  totalViews: string;
-  totalLikes: string;
-  totalComments: string;
-  totalShares: string;
-}
+// 定义batchExport方法的返回值类型
+type BatchExportResult =
+  | string
+  | { files: { filename: string; content: string }[] }
+  | Record<string, unknown>[];
 
 @ApiTags('管理端API - 文章')
 @Controller('admin/articles')
@@ -87,7 +71,10 @@ interface TotalStatsRaw {
 @ApiBearerAuth('JWT-auth')
 @UseInterceptors(FieldVisibilityInterceptor)
 export class AdminArticleController {
-  constructor(private readonly articleService: ArticleService) {}
+  constructor(
+    private readonly articleService: ArticleService,
+    private readonly articleStatisticsService: ArticleStatisticsService,
+  ) {}
 
   @Post()
   @UseAdminVisibility()
@@ -196,135 +183,8 @@ export class AdminArticleController {
   @Get('stats')
   @ApiOperation({ summary: '获取文章统计信息' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getStatistics(): Promise<any> {
-    const [
-      basicStats,
-      popularArticles,
-      recentArticles,
-      popularTags,
-      readingTimeStats,
-    ] = await Promise.all([
-      this.articleService.getStatistics(),
-      this.articleService.getPopular(10),
-      this.articleService.getRecent(10),
-      this.articleService.getPopularTags(20),
-      this.articleService.getReadingTimeStats(),
-    ]);
-
-    // 获取分类统计
-    const categoryStats = await this.getCategoryStats();
-
-    // 获取月度统计
-    const monthlyStats = await this.getMonthlyStats();
-
-    // 计算总浏览量、点赞数、评论数、分享数
-    const totalStats = await this.getTotalStats();
-
-    // 获取精选和置顶文章数量
-    const featuredCount = await this.articleService
-      .findAllPaginated({
-        isFeatured: true,
-        limit: 1,
-      })
-      .then((result) => result.total);
-
-    const topCount = await this.articleService
-      .findAllPaginated({
-        isTop: true,
-        limit: 1,
-      })
-      .then((result) => result.total);
-
-    return {
-      ...basicStats,
-      ...totalStats,
-      featuredCount,
-      topCount,
-      popularArticles,
-      recentArticles,
-      categoryStats,
-      tagStats: popularTags.map((tag: TagStatsRaw) => ({
-        name: tag.name,
-        count: parseInt(tag.articleCount),
-        percentage:
-          basicStats.published > 0
-            ? Math.round(
-                (parseInt(tag.articleCount) / basicStats.published) * 100,
-              )
-            : 0,
-      })),
-      monthlyStats,
-      readingTimeStats,
-    };
-  }
-
-  private async getCategoryStats(): Promise<
-    { name: string; count: number; percentage: number }[]
-  > {
-    const result = (await this.articleService['articleRepository']
-      .createQueryBuilder('article')
-      .leftJoin('article.category', 'category')
-      .select('category.name', 'name')
-      .addSelect('COUNT(article.id)', 'count')
-      .where('article.status = :status', { status: 'published' })
-      .andWhere('article.isVisible = :isVisible', { isVisible: true })
-      .groupBy('category.id')
-      .orderBy('count', 'DESC')
-      .getRawMany()) as CategoryStatsRaw[];
-
-    const total = result.reduce((sum, item) => sum + parseInt(item.count), 0);
-
-    return result.map((item) => ({
-      name: item.name || '未分类',
-      count: parseInt(item.count),
-      percentage:
-        total > 0 ? Math.round((parseInt(item.count) / total) * 100) : 0,
-    }));
-  }
-
-  private async getMonthlyStats(): Promise<
-    { month: string; articles: number; views: number }[]
-  > {
-    const result = (await this.articleService['articleRepository']
-      .createQueryBuilder('article')
-      .select('DATE_FORMAT(article.publishedAt, "%Y-%m")', 'month')
-      .addSelect('COUNT(article.id)', 'articles')
-      .addSelect('SUM(article.viewCount)', 'views')
-      .where('article.status = :status', { status: 'published' })
-      .andWhere('article.publishedAt >= DATE_SUB(NOW(), INTERVAL 12 MONTH)')
-      .groupBy('month')
-      .orderBy('month', 'ASC')
-      .getRawMany()) as MonthlyStatsRaw[];
-
-    return result.map((item) => ({
-      month: item.month,
-      articles: parseInt(item.articles),
-      views: parseInt(item.views) || 0,
-    }));
-  }
-
-  private async getTotalStats(): Promise<{
-    totalViews: number;
-    totalLikes: number;
-    totalComments: number;
-    totalShares: number;
-  }> {
-    const result = (await this.articleService['articleRepository']
-      .createQueryBuilder('article')
-      .select('SUM(article.viewCount)', 'totalViews')
-      .addSelect('SUM(article.likeCount)', 'totalLikes')
-      .addSelect('SUM(article.commentCount)', 'totalComments')
-      .addSelect('SUM(article.shareCount)', 'totalShares')
-      .where('article.status = :status', { status: 'published' })
-      .andWhere('article.isVisible = :isVisible', { isVisible: true })
-      .getRawOne()) as TotalStatsRaw;
-
-    return {
-      totalViews: parseInt(result.totalViews) || 0,
-      totalLikes: parseInt(result.totalLikes) || 0,
-      totalComments: parseInt(result.totalComments) || 0,
-      totalShares: parseInt(result.totalShares) || 0,
-    };
+  async getStatistics(): Promise<unknown> {
+    return await this.articleStatisticsService.getAdminStatistics();
   }
 
   @Get(':id')
@@ -376,7 +236,7 @@ export class AdminArticleController {
     @Body() batchPublishDto: BatchPublishArticleDto,
   ): Promise<{ message: string }> {
     if (batchPublishDto.publishedAt) {
-      const result = await this.articleService.batchPublishWithDate(batchPublishDto);
+      await this.articleService.batchPublishWithDate(batchPublishDto);
     } else {
       await this.articleService.batchPublish(batchPublishDto.ids);
     }
@@ -399,7 +259,7 @@ export class AdminArticleController {
   async batchUpdate(
     @Body() batchUpdateDto: BatchUpdateArticleDto,
   ): Promise<{ message: string }> {
-    const result = await this.articleService.batchUpdate(batchUpdateDto);
+    await this.articleService.batchUpdate(batchUpdateDto);
     return { message: `成功更新 ${batchUpdateDto.ids.length} 篇文章` };
   }
 
@@ -513,7 +373,9 @@ export class AdminArticleController {
     @Body() exportDto: BatchExportArticleDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<any> {
-    const result = await this.articleService.batchExport(exportDto);
+    const result = (await this.articleService.batchExport(
+      exportDto,
+    )) as BatchExportResult;
 
     // 检查是否是多文件导出（markdown格式且返回files数组）
     if (
@@ -521,15 +383,17 @@ export class AdminArticleController {
       typeof result === 'object' &&
       result !== null &&
       'files' in result &&
-      Array.isArray((result as { files: { filename: string; content: string }[] }).files)
+      Array.isArray(
+        (result as { files: { filename: string; content: string }[] }).files,
+      )
     ) {
       // 创建zip压缩包
       const archive = archiver('zip', {
-        zlib: { level: 9 } // 压缩级别
+        zlib: { level: 9 }, // 压缩级别
       });
 
       const filename = `articles_export_${new Date().toISOString().split('T')[0]}.zip`;
-      
+
       res.set({
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${filename}"`,
@@ -538,7 +402,9 @@ export class AdminArticleController {
       archive.pipe(res);
 
       // 添加每个文件到压缩包
-      (result as { files: { filename: string; content: string }[] }).files.forEach((file) => {
+      (
+        result as { files: { filename: string; content: string }[] }
+      ).files.forEach((file) => {
         archive.append(file.content, { name: file.filename });
       });
 

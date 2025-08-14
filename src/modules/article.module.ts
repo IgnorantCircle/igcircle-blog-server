@@ -32,6 +32,11 @@ import { CommonModule } from '@/common/common.module';
     TagService,
     CategoryService,
   ],
-  exports: [ArticleService, ArticleQueryService, ArticleViewService],
+  exports: [
+    ArticleService,
+    ArticleQueryService,
+    ArticleViewService,
+    ArticleStatisticsService,
+  ],
 })
 export class ArticleModule {}

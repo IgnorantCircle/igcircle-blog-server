@@ -69,13 +69,13 @@ export class ImportProgressService {
   /**
    * 更新当前处理的文件信息
    */
-  async updateCurrentFile(
+  updateCurrentFile(
     taskId: string,
     fileName: string,
     processedFiles: number,
     totalFiles: number,
-  ): Promise<void> {
-    await this.updateProgress(taskId, {
+  ): void {
+    this.updateProgress(taskId, {
       currentFile: fileName,
       processedFiles,
       progress: Math.round((processedFiles / totalFiles) * 100),
@@ -85,7 +85,7 @@ export class ImportProgressService {
   /**
    * 处理文件后更新进度
    */
-  async updateProgressAfterFile(
+  updateProgressAfterFile(
     taskId: string,
     processedFiles: number,
     totalFiles: number,
@@ -95,8 +95,8 @@ export class ImportProgressService {
       skippedCount: number;
     },
     startTime: number,
-  ): Promise<void> {
-    await this.updateProgress(taskId, {
+  ): void {
+    this.updateProgress(taskId, {
       processedFiles,
       successCount: counters.successCount,
       failureCount: counters.failureCount,
@@ -113,8 +113,8 @@ export class ImportProgressService {
   /**
    * 标记任务为处理中状态
    */
-  async markAsProcessing(taskId: string): Promise<void> {
-    await this.updateProgress(taskId, {
+  markAsProcessing(taskId: string): void {
+    this.updateProgress(taskId, {
       status: ImportStatus.PROCESSING,
     });
   }
@@ -122,8 +122,8 @@ export class ImportProgressService {
   /**
    * 标记任务为完成状态
    */
-  async markTaskCompleted(taskId: string, results: any[]): Promise<void> {
-    await this.updateProgress(taskId, {
+  markTaskCompleted(taskId: string, results: any[]): void {
+    this.updateProgress(taskId, {
       status: ImportStatus.COMPLETED,
       progress: 100,
       results,
@@ -133,8 +133,8 @@ export class ImportProgressService {
   /**
    * 标记任务为失败状态
    */
-  async markAsFailed(taskId: string, error: string): Promise<void> {
-    await this.updateProgress(taskId, {
+  markAsFailed(taskId: string, error: string): void {
+    this.updateProgress(taskId, {
       status: ImportStatus.FAILED,
       error,
     });
@@ -167,13 +167,13 @@ export class ImportProgressService {
   /**
    * 获取导入统计信息
    */
-  async getImportStatistics(taskId: string): Promise<{
+  getImportStatistics(taskId: string): {
     totalFiles: number;
     processedFiles: number;
     successRate: number;
     averageProcessingTime: number;
-  } | null> {
-    const progress = await this.getImportProgress(taskId);
+  } | null {
+    const progress = this.getImportProgress(taskId);
     if (!progress) return null;
 
     const successRate =

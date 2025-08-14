@@ -8,9 +8,12 @@ import {
   Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import type { Request } from 'express';
 import { ArticleService } from '@/services/article/article.service';
 import { ArticleQueryService } from '@/services/article/article-query.service';
+import { ArticleStatisticsService } from '@/services/article/article-statistics.service';
 import { Public } from '@/decorators/public.decorator';
 import { CurrentUser } from '@/decorators/user.decorator';
 import {
@@ -25,6 +28,7 @@ import {
 import { NotFoundException } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
 import { PaginationUtil } from '@/common/utils/pagination.util';
+import { Article } from '@/entities/article.entity';
 
 interface CurrentUserType {
   sub: string;
@@ -32,6 +36,7 @@ interface CurrentUserType {
   email: string;
   role: string;
 }
+
 @ApiTags('公共API - 文章')
 @Controller('articles')
 @Public()
@@ -40,6 +45,9 @@ export class PublicArticleController {
   constructor(
     private readonly articleService: ArticleService,
     private readonly articleQueryService: ArticleQueryService,
+    private readonly articleStatisticsService: ArticleStatisticsService,
+    @InjectRepository(Article)
+    private readonly articleRepository: Repository<Article>,
   ) {}
 
   @Get()
@@ -129,10 +137,8 @@ export class PublicArticleController {
   @ApiResponse({ status: 200, description: '获取成功' })
   async getArchive(@Query() query: ArticleQueryDto): Promise<any> {
     // 强制只返回已发布的文章
-    const archiveQuery = new ArticleQueryDto();
-    Object.assign(archiveQuery, query);
-    archiveQuery.status = ArticleStatus.PUBLISHED;
-    const result = await this.articleService.findAllPaginated(archiveQuery);
+    query.status = ArticleStatus.PUBLISHED;
+    const result = await this.articleService.findAllPaginated(query);
 
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
@@ -140,11 +146,10 @@ export class PublicArticleController {
   }
 
   @Get('archive/stats')
-  @ApiOperation({ summary: '获取文章归档统计' })
+  @ApiOperation({ summary: '获取文章统计信息（用户端）' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getArchiveStats(): Promise<{ year: number; month: number; count: number }[]> {
-    const result = await this.articleQueryService.getArchiveStats();
-    return result;
+  async getStatistics() {
+    return this.articleStatisticsService.getPublicStatistics();
   }
 
   @Get(':id')

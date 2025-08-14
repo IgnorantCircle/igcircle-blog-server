@@ -193,18 +193,10 @@ export class ArticleService extends BaseService<Article> {
     query: ArticleQueryDto,
   ): Promise<{ items: Article[]; total: number }> {
     const options: ArticleQueryOptions = {
-      page: query.page,
-      limit: query.limit,
-      status: query.status,
-      categoryIds: query.categoryIds,
-      tagIds: query.tagIds,
-      isFeatured: query.isFeatured,
-      isTop: query.isTop,
-      keyword: query.keyword,
+      ...query,
       sortBy: query.sortBy || 'createdAt',
       sortOrder: query.sortOrder || 'DESC',
       includeTags: query.includeTags,
-      includeCategory: query.includeCategory,
     };
 
     return this.articleQueryService.findAllPaginated(options);
@@ -355,10 +347,6 @@ export class ArticleService extends BaseService<Article> {
     publishDto?: { publishedAt?: Date },
   ): Promise<Article> {
     return this.articleStatusService.publish(id, publishDto);
-  }
-
-  async incrementViews(id: string): Promise<void> {
-    return this.articleStatisticsService.incrementViews(id);
   }
 
   /**
@@ -772,7 +760,9 @@ export class ArticleService extends BaseService<Article> {
       .join('\n\n---\n\n');
   }
 
-  private convertToMarkdownFiles(articles: Article[]): { files: { filename: string; content: string }[] } {
+  private convertToMarkdownFiles(articles: Article[]): {
+    files: { filename: string; content: string }[];
+  } {
     interface ArticleWithRelations {
       id: string;
       title: string;
@@ -819,7 +809,7 @@ export class ArticleService extends BaseService<Article> {
       const filename = article.slug
         ? `${article.slug}.md`
         : `${article.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-')}.md`;
-      
+
       return {
         filename,
         content: markdown,

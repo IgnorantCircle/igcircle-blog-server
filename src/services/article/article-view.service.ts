@@ -65,11 +65,14 @@ export class ArticleViewService {
       await this.clearRelatedCaches(articleId);
 
       return true;
-    } catch (error) {
+    } catch (error: unknown) {
       // 如果是唯一约束冲突（并发情况下可能发生），则不计数
       if (
-        (error as any).code === 'ER_DUP_ENTRY' ||
-        (error as any).code === '23505'
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        ((error as { code?: unknown }).code === 'ER_DUP_ENTRY' ||
+          (error as { code?: unknown }).code === '23505')
       ) {
         return false;
       }

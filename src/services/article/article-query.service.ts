@@ -56,7 +56,9 @@ export class ArticleQueryService extends BaseService<Article> {
       options.tagIds ||
       options.isFeatured !== undefined ||
       options.isTop !== undefined ||
-      options.keyword
+      options.keyword ||
+      options.year ||
+      options.month
     ) {
       return this.executeQuery(options);
     }
@@ -83,12 +85,7 @@ export class ArticleQueryService extends BaseService<Article> {
     const {
       page = 1,
       limit = 10,
-      status,
-      categoryIds,
       tagIds,
-      isFeatured,
-      keyword,
-      isTop,
       sortBy = 'createdAt',
       sortOrder = 'DESC',
       includeTags = false,
@@ -104,14 +101,7 @@ export class ArticleQueryService extends BaseService<Article> {
     });
 
     // 应用过滤条件
-    this.applyFilters(queryBuilder, {
-      status,
-      categoryIds,
-      tagIds,
-      isFeatured,
-      isTop,
-      keyword,
-    });
+    this.applyFilters(queryBuilder, options);
 
     // 应用排序
     queryBuilder.orderBy(`article.${sortBy}`, sortOrder);
@@ -374,7 +364,9 @@ export class ArticleQueryService extends BaseService<Article> {
   /**
    * 获取归档统计数据
    */
-  async getArchiveStats(): Promise<{ year: number; month: number; count: number }[]> {
+  async getArchiveStats(): Promise<
+    { year: number; month: number; count: number }[]
+  > {
     const result = await this.articleRepository
       .createQueryBuilder('article')
       .select('YEAR(article.publishedAt)', 'year')
@@ -388,7 +380,7 @@ export class ArticleQueryService extends BaseService<Article> {
       .addOrderBy('month', 'DESC')
       .getRawMany();
 
-    return result.map((item) => ({
+    return result.map((item: any) => ({
       year: parseInt(item.year),
       month: parseInt(item.month),
       count: parseInt(item.count),
@@ -632,14 +624,41 @@ export class ArticleQueryService extends BaseService<Article> {
     queryBuilder: SelectQueryBuilder<Article>,
     filters: Partial<ArticleQueryOptions>,
   ): void {
-    const { status, categoryIds, tagIds, isFeatured, isTop, keyword } = filters;
+    const {
+      status,
+      categoryIds,
+      tagIds,
+      isFeatured,
+      isTop,
+      isVisible,
+      keyword,
+      year,
+      month,
+      publishedAtStart,
+      publishedAtEnd,
+    } = filters;
+
+    console.log('filters:', filters);
+
+    // 调试日志：打印年月筛选参数
+    if (year || month) {
+      this.logger.log('年月筛选参数', {
+        metadata: { year, month, filters },
+      });
+    }
 
     if (status) {
       queryBuilder.andWhere('article.status = :status', { status });
     }
 
-    // 对于用户端查询，强制过滤可见性
-    if (status === ArticleStatus.PUBLISHED) {
+    // 处理可见性筛选
+    if (typeof isVisible === 'boolean') {
+      // 如果明确指定了isVisible参数，使用该参数
+      queryBuilder.andWhere('article.isVisible = :isVisibleFilter', {
+        isVisibleFilter: isVisible,
+      });
+    } else if (status === ArticleStatus.PUBLISHED) {
+      // 对于用户端查询已发布文章，默认只显示可见的文章
       queryBuilder.andWhere('article.isVisible = :isVisible', {
         isVisible: true,
       });
@@ -681,6 +700,26 @@ export class ArticleQueryService extends BaseService<Article> {
         '(article.title LIKE :keyword OR article.content LIKE :keyword OR article.summary LIKE :keyword)',
         { keyword: `%${keyword}%` },
       );
+    }
+
+    // 添加年份和月份过滤
+    if (year) {
+      queryBuilder.andWhere('YEAR(article.publishedAt) = :year', { year });
+    }
+    if (month) {
+      queryBuilder.andWhere('MONTH(article.publishedAt) = :month', { month });
+    }
+
+    // 添加发布日期区间过滤
+    if (publishedAtStart) {
+      queryBuilder.andWhere('article.publishedAt >= :publishedAtStart', {
+        publishedAtStart,
+      });
+    }
+    if (publishedAtEnd) {
+      queryBuilder.andWhere('article.publishedAt <= :publishedAtEnd', {
+        publishedAtEnd,
+      });
     }
   }
 }
