@@ -14,14 +14,6 @@ import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { BlogCacheService } from '@/common/cache/blog-cache.service';
 
-// JWT payload interface for type safety
-interface JwtPayload {
-  sub: string;
-  jti: string;
-  iat?: number;
-  exp?: number;
-}
-
 @Injectable()
 export class UserService extends BaseService<User> {
   constructor(
@@ -212,7 +204,12 @@ export class UserService extends BaseService<User> {
     try {
       // 从token中提取用户ID和tokenId
       const decoded = this.jwtService.decode(token);
-      if (!decoded || typeof decoded !== 'object' || !decoded.sub) {
+      if (
+        !decoded ||
+        typeof decoded !== 'object' ||
+        !decoded.sub ||
+        !decoded.jti
+      ) {
         this.logger.warn('无效的token格式', {
           action: 'check_token_blacklist',
           resource: 'token',
