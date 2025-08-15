@@ -232,6 +232,23 @@ export class PublicArticleController {
     return article;
   }
 
+  @Get(':id/related')
+  @UsePublicVisibility()
+  @ApiOperation({ summary: '获取相关文章' })
+  @ApiParam({ name: 'id', description: '文章ID' })
+  @ApiResponse({
+    status: 200,
+    description: '获取成功',
+    type: [UnifiedArticleDto],
+  })
+  async getRelated(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limitStr?: string,
+  ): Promise<Article[]> {
+    const limit = limitStr ? parseInt(limitStr, 10) : 4;
+    return await this.articleService.getRelated(id, limit);
+  }
+
   /**
    * 获取客户端真实IP地址
    */
