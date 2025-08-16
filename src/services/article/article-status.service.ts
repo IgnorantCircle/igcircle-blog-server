@@ -85,8 +85,8 @@ export class ArticleStatusService {
       })();
     });
 
-    // 清除相关缓存
-    await this.blogCacheService.clearArticleCache(article.slug);
+    // 清除相关缓存 - 使用优化后的发布操作类型
+    await this.blogCacheService.clearArticleCache(article.slug, 'publish');
 
     this.logger.log('文章发布成功', {
       metadata: { articleId: id, title: article.title },
@@ -149,8 +149,8 @@ export class ArticleStatusService {
       })();
     });
 
-    // 清除相关缓存
-    await this.blogCacheService.clearArticleCache(article.slug);
+    // 清除相关缓存 - 取消发布操作
+    await this.blogCacheService.clearArticleCache(article.slug, 'archive');
 
     this.logger.log('文章取消发布成功', {
       metadata: { articleId: id, title: article.title },
@@ -180,8 +180,8 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.blogCacheService.clearArticleCache(article.slug);
+    // 清除相关缓存 - 归档操作
+    await this.blogCacheService.clearArticleCache(article.slug, 'archive');
 
     this.logger.log('文章归档成功', {
       metadata: { articleId: id, title: article.title },
@@ -212,7 +212,7 @@ export class ArticleStatusService {
     const updatedArticle = await this.articleRepository.save(article);
 
     // 清除相关缓存
-    await this.blogCacheService.clearArticleCache(article.slug);
+    await this.blogCacheService.clearArticleCache(article.slug, 'archive');
 
     this.logger.log('文章恢复成功', {
       metadata: { articleId: id, title: article.title },
@@ -235,8 +235,8 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.blogCacheService.clearArticleCache(article.slug);
+    // 清除相关缓存 - 精选状态变更
+    await this.blogCacheService.clearArticleCache(article.slug, 'feature');
 
     this.logger.log(`文章${featured ? '设置' : '取消'}精选成功`, {
       metadata: { articleId: id, title: article.title, featured },
@@ -259,8 +259,8 @@ export class ArticleStatusService {
 
     const updatedArticle = await this.articleRepository.save(article);
 
-    // 清除相关缓存
-    await this.blogCacheService.clearArticleCache(article.slug);
+    // 清除相关缓存 - 置顶状态变更
+    await this.blogCacheService.clearArticleCache(article.slug, 'top');
 
     this.logger.log(`文章${top ? '设置' : '取消'}置顶成功`, {
       metadata: { articleId: id, title: article.title, top },

@@ -37,10 +37,10 @@ export class BlogCacheService {
     POPULAR_ARTICLES: 15 * 60 * 1000, // 15分钟
     // 最新文章缓存时间 - 5分钟
     RECENT_ARTICLES: 5 * 60 * 1000, // 5分钟
-    // 全部标签缓存时间 - 1小时
-    ALL_TAGS: 60 * 60 * 1000, // 1小时
-    // 全部分类缓存时间 - 1小时
-    ALL_CATEGORIES: 60 * 60 * 1000, // 1小时
+    // 全部标签缓存时间 - 24小时
+    ALL_TAGS: 24 * 60 * 60 * 1000, // 24小时
+    // 全部分类缓存时间 - 124小时
+    ALL_CATEGORIES: 24 * 60 * 60 * 1000, // 24小时
     // 根据别名获取文章详情缓存时间 - 30分钟
     ARTICLE_DETAIL_BY_SLUG: 30 * 60 * 1000, // 30分钟
     // 用户在线状态缓存时间 - 5分钟
@@ -230,35 +230,118 @@ export class BlogCacheService {
 
   /**
    * 清除文章相关缓存（发布、更新、删除文章时调用）
+   * @param slug 文章slug，如果提供则只清除该文章的详情缓存
+   * @param operationType 操作类型，必须指定以确保精确的缓存清除策略
    */
-  async clearArticleCache(slug?: string): Promise<void> {
+  async clearArticleCache(
+    slug?: string,
+    operationType:
+      | 'create'
+      | 'update'
+      | 'delete'
+      | 'feature'
+      | 'top'
+      | 'publish'
+      | 'archive' = 'update',
+  ): Promise<void> {
     try {
-      // 清除常见的文章列表缓存（不同分页）
-      const commonPageSizes = [10, 20, 50];
-      const maxPages = 10; // 清除前10页的缓存
+      const clearPromises: Promise<void>[] = [];
 
-      for (const limit of commonPageSizes) {
-        for (let page = 1; page <= maxPages; page++) {
-          const key = `${BlogCacheService.KEYS.ARTICLE_LIST}:${page}:${limit}`;
-          await this.del(key);
-        }
+      // 根据操作类型智能清除缓存
+      switch (operationType) {
+        case 'create':
+        case 'publish':
+          // 新文章发布：清除列表和最新文章缓存
+          clearPromises.push(this.clearArticleListCache());
+          clearPromises.push(this.del(BlogCacheService.KEYS.RECENT_ARTICLES));
+          break;
+
+        case 'update':
+          // 文章更新：只清除该文章详情缓存
+          if (slug) {
+            clearPromises.push(this.clearArticleDetailBySlug(slug));
+          }
+          break;
+
+        case 'delete':
+          // 文章删除：清除所有相关缓存
+          clearPromises.push(this.clearArticleListCache());
+          clearPromises.push(this.clearSpecialArticleListsCache());
+          if (slug) {
+            clearPromises.push(this.clearArticleDetailBySlug(slug));
+          }
+          break;
+
+        case 'feature':
+          // 精选状态变更：清除精选文章缓存
+          clearPromises.push(this.del(BlogCacheService.KEYS.FEATURED_ARTICLES));
+          if (slug) {
+            clearPromises.push(this.clearArticleDetailBySlug(slug));
+          }
+          break;
+
+        case 'top':
+          // 置顶状态变更：清除置顶文章缓存
+          clearPromises.push(this.del(BlogCacheService.KEYS.TOP_ARTICLES));
+          if (slug) {
+            clearPromises.push(this.clearArticleDetailBySlug(slug));
+          }
+          break;
+
+        case 'archive':
+          // 归档状态变更：清除列表缓存
+          clearPromises.push(this.clearArticleListCache());
+          if (slug) {
+            clearPromises.push(this.clearArticleDetailBySlug(slug));
+          }
+          break;
       }
 
-      // 清除其他文章相关缓存
-      await this.del(BlogCacheService.KEYS.FEATURED_ARTICLES);
-      await this.del(BlogCacheService.KEYS.TOP_ARTICLES);
-      await this.del(BlogCacheService.KEYS.POPULAR_ARTICLES);
-      await this.del(BlogCacheService.KEYS.RECENT_ARTICLES);
+      // 并行执行所有清除操作
+      await Promise.all(clearPromises);
 
-      // 如果指定了文章slug，清除该文章的详情缓存
-      if (slug) {
-        await this.clearArticleDetailBySlug(slug);
-      }
-
-      this.logger.debug(`文章缓存已清除: ${slug || 'all'}`);
+      this.logger.debug(`文章缓存已清除`, {
+        metadata: {
+          slug: slug || 'all',
+          operationType,
+        },
+      });
     } catch (error) {
       this.logger.error('清除文章缓存失败', error);
+      throw error;
     }
+  }
+
+  /**
+   * 清除文章列表缓存（分页缓存）
+   */
+  private async clearArticleListCache(): Promise<void> {
+    const clearPromises: Promise<void>[] = [];
+    const commonPageSizes = [6, 10, 20, 50];
+    const maxPages = 5; // 减少清除页数，提高性能
+
+    for (const limit of commonPageSizes) {
+      for (let page = 1; page <= maxPages; page++) {
+        const key = `${BlogCacheService.KEYS.ARTICLE_LIST}:${page}:${limit}`;
+        clearPromises.push(this.del(key));
+      }
+    }
+
+    await Promise.all(clearPromises);
+  }
+
+  /**
+   * 清除特殊文章列表缓存（精选、置顶、热门、最新）
+   */
+  private async clearSpecialArticleListsCache(): Promise<void> {
+    const clearPromises = [
+      this.del(BlogCacheService.KEYS.FEATURED_ARTICLES),
+      this.del(BlogCacheService.KEYS.TOP_ARTICLES),
+      this.del(BlogCacheService.KEYS.POPULAR_ARTICLES),
+      this.del(BlogCacheService.KEYS.RECENT_ARTICLES),
+    ];
+
+    await Promise.all(clearPromises);
   }
 
   /**

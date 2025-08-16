@@ -123,8 +123,8 @@ export class ArticleViewService {
       });
 
       if (article) {
-        // 清除文章详情缓存（使用slug）
-        await this.blogCacheService.clearArticleCache(article.slug);
+        // 清除文章详情缓存（使用slug）- 浏览量变化只需更新详情缓存
+        await this.blogCacheService.clearArticleCache(article.slug, 'update');
       }
 
       // 清除热门文章缓存（因为viewCount变化可能影响排序）

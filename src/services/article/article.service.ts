@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In, Not } from 'typeorm';
 import { Article } from '@/entities/article.entity';
 import { Tag } from '@/entities/tag.entity';
+
 import {
   CreateArticleDto,
   UpdateArticleDto,
@@ -196,7 +197,6 @@ export class ArticleService extends BaseService<Article> {
       ...query,
       sortBy: query.sortBy || 'createdAt',
       sortOrder: query.sortOrder || 'DESC',
-      includeTags: query.includeTags,
     };
 
     return this.articleQueryService.findAllPaginated(options);
@@ -358,26 +358,6 @@ export class ArticleService extends BaseService<Article> {
    * @param isAdmin 是否为管理员
    * @returns 是否为新的浏览记录
    */
-  async recordView(
-    articleId: string,
-    userId: string | null,
-    ipAddress: string,
-    userAgent: string | null,
-    isAdmin: boolean = false,
-  ): Promise<boolean> {
-    return this.articleStatisticsService.recordView(
-      articleId,
-      userId,
-      ipAddress,
-      userAgent,
-      isAdmin,
-    );
-  }
-
-  async like(id: string): Promise<void> {
-    return this.articleStatisticsService.like(id);
-  }
-
   async remove(id: string): Promise<void> {
     const article = await this.findById(id);
 
@@ -503,7 +483,7 @@ export class ArticleService extends BaseService<Article> {
         }
 
         // 清除相关缓存
-        await this.blogCacheService.clearArticleCache();
+        await this.blogCacheService.clearArticleCache(undefined, 'delete');
       })();
     });
   }
@@ -892,10 +872,6 @@ export class ArticleService extends BaseService<Article> {
 
   async getRelated(id: string, limit: number = 5): Promise<Article[]> {
     return this.articleQueryService.getRelatedArticles(id, limit);
-  }
-
-  async share(id: string): Promise<void> {
-    return this.articleStatisticsService.share(id);
   }
 
   async findByIdAndAuthor(id: string, authorId: string): Promise<Article> {
