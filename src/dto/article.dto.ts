@@ -22,7 +22,7 @@ import { BaseCreateDto, BaseQueryDto } from './base/base.dto';
 import {
   VALIDATION_LIMITS,
   ARRAY_LIMITS,
-  NUMERIC_LIMITS,
+  NUMBER_LIMITS,
   VALIDATION_MESSAGES,
 } from '@/common/constants/validation.constants';
 
@@ -188,21 +188,21 @@ export class CreateArticleDto extends BaseCreateDto {
 
   @ApiPropertyOptional({
     description: '预计阅读时间（分钟）',
-    minimum: NUMERIC_LIMITS.READING_TIME.MIN,
-    maximum: NUMERIC_LIMITS.READING_TIME.MAX,
+    minimum: NUMBER_LIMITS.READING_TIME.MIN,
+    maximum: NUMBER_LIMITS.READING_TIME.MAX,
   })
   @IsOptional()
   @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('阅读时间') })
-  @Min(NUMERIC_LIMITS.READING_TIME.MIN, {
+  @Min(NUMBER_LIMITS.READING_TIME.MIN, {
     message: VALIDATION_MESSAGES.MIN_VALUE(
       '阅读时间',
-      NUMERIC_LIMITS.READING_TIME.MIN,
+      NUMBER_LIMITS.READING_TIME.MIN,
     ),
   })
-  @Max(NUMERIC_LIMITS.READING_TIME.MAX, {
+  @Max(NUMBER_LIMITS.READING_TIME.MAX, {
     message: VALIDATION_MESSAGES.MAX_VALUE(
       '阅读时间',
-      NUMERIC_LIMITS.READING_TIME.MAX,
+      NUMBER_LIMITS.READING_TIME.MAX,
     ),
   })
   @Type(() => Number)
@@ -321,15 +321,15 @@ export class ArticleQueryDto extends BaseQueryDto {
 
   @ApiPropertyOptional({
     description: '最小阅读时间（分钟）',
-    minimum: NUMERIC_LIMITS.READING_TIME.MIN,
+    minimum: NUMBER_LIMITS.READING_TIME.MIN,
     example: 5,
   })
   @IsOptional()
   @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('最小阅读时间') })
-  @Min(NUMERIC_LIMITS.READING_TIME.MIN, {
+  @Min(NUMBER_LIMITS.READING_TIME.MIN, {
     message: VALIDATION_MESSAGES.MIN_VALUE(
       '最小阅读时间',
-      NUMERIC_LIMITS.READING_TIME.MIN,
+      NUMBER_LIMITS.READING_TIME.MIN,
     ),
   })
   @Type(() => Number)
@@ -337,15 +337,15 @@ export class ArticleQueryDto extends BaseQueryDto {
 
   @ApiPropertyOptional({
     description: '最大阅读时间（分钟）',
-    maximum: NUMERIC_LIMITS.READING_TIME.MAX,
+    maximum: NUMBER_LIMITS.READING_TIME.MAX,
     example: 30,
   })
   @IsOptional()
   @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('最大阅读时间') })
-  @Max(NUMERIC_LIMITS.READING_TIME.MAX, {
+  @Max(NUMBER_LIMITS.READING_TIME.MAX, {
     message: VALIDATION_MESSAGES.MAX_VALUE(
       '最大阅读时间',
-      NUMERIC_LIMITS.READING_TIME.MAX,
+      NUMBER_LIMITS.READING_TIME.MAX,
     ),
   })
   @Type(() => Number)
@@ -353,59 +353,37 @@ export class ArticleQueryDto extends BaseQueryDto {
 
   @ApiPropertyOptional({
     description: '年份（用于归档查询）',
-    minimum: NUMERIC_LIMITS.YEAR.MIN,
-    maximum: NUMERIC_LIMITS.YEAR.MAX,
+    minimum: NUMBER_LIMITS.YEAR.MIN,
+    maximum: NUMBER_LIMITS.YEAR.MAX,
     example: 2023,
   })
   @IsOptional()
   @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('年份') })
-  @Min(NUMERIC_LIMITS.YEAR.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('年份', NUMERIC_LIMITS.YEAR.MIN),
+  @Min(NUMBER_LIMITS.YEAR.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('年份', NUMBER_LIMITS.YEAR.MIN),
   })
-  @Max(NUMERIC_LIMITS.YEAR.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('年份', NUMERIC_LIMITS.YEAR.MAX),
+  @Max(NUMBER_LIMITS.YEAR.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('年份', NUMBER_LIMITS.YEAR.MAX),
   })
   @Type(() => Number)
   year?: number;
 
   @ApiPropertyOptional({
     description: '月份（用于归档查询）',
-    minimum: NUMERIC_LIMITS.MONTH.MIN,
-    maximum: NUMERIC_LIMITS.MONTH.MAX,
+    minimum: NUMBER_LIMITS.MONTH.MIN,
+    maximum: NUMBER_LIMITS.MONTH.MAX,
     example: 6,
   })
   @IsOptional()
   @IsNumber({}, { message: VALIDATION_MESSAGES.INVALID_NUMBER('月份') })
-  @Min(NUMERIC_LIMITS.MONTH.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('月份', NUMERIC_LIMITS.MONTH.MIN),
+  @Min(NUMBER_LIMITS.MONTH.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('月份', NUMBER_LIMITS.MONTH.MIN),
   })
-  @Max(NUMERIC_LIMITS.MONTH.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('月份', NUMERIC_LIMITS.MONTH.MAX),
+  @Max(NUMBER_LIMITS.MONTH.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('月份', NUMBER_LIMITS.MONTH.MAX),
   })
   @Type(() => Number)
   month?: number;
-
-  @ApiPropertyOptional({
-    description: '是否包含标签信息',
-    example: true,
-  })
-  @IsOptional()
-  @IsBoolean({
-    message: VALIDATION_MESSAGES.INVALID_BOOLEAN('是否包含标签信息'),
-  })
-  @Type(() => Boolean)
-  includeTags?: boolean;
-
-  @ApiPropertyOptional({
-    description: '是否包含分类信息',
-    example: true,
-  })
-  @IsOptional()
-  @IsBoolean({
-    message: VALIDATION_MESSAGES.INVALID_BOOLEAN('是否包含分类信息'),
-  })
-  @Type(() => Boolean)
-  includeCategory?: boolean;
 
   @ApiPropertyOptional({
     description: '发布开始日期（用于日期区间搜索）',
@@ -473,32 +451,32 @@ export class ArticleSearchDto extends BaseQueryDto {
 export class ArticleArchiveDto extends BaseQueryDto {
   @ApiPropertyOptional({
     description: '年份',
-    minimum: NUMERIC_LIMITS.YEAR.MIN,
-    maximum: NUMERIC_LIMITS.YEAR.MAX,
+    minimum: NUMBER_LIMITS.YEAR.MIN,
+    maximum: NUMBER_LIMITS.YEAR.MAX,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.YEAR.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('年份', NUMERIC_LIMITS.YEAR.MIN),
+  @Min(NUMBER_LIMITS.YEAR.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('年份', NUMBER_LIMITS.YEAR.MIN),
   })
-  @Max(NUMERIC_LIMITS.YEAR.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('年份', NUMERIC_LIMITS.YEAR.MAX),
+  @Max(NUMBER_LIMITS.YEAR.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('年份', NUMBER_LIMITS.YEAR.MAX),
   })
   @Type(() => Number)
   year?: number;
 
   @ApiPropertyOptional({
     description: '月份',
-    minimum: NUMERIC_LIMITS.MONTH.MIN,
-    maximum: NUMERIC_LIMITS.MONTH.MAX,
+    minimum: NUMBER_LIMITS.MONTH.MIN,
+    maximum: NUMBER_LIMITS.MONTH.MAX,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.MONTH.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('月份', NUMERIC_LIMITS.MONTH.MIN),
+  @Min(NUMBER_LIMITS.MONTH.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('月份', NUMBER_LIMITS.MONTH.MIN),
   })
-  @Max(NUMERIC_LIMITS.MONTH.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('月份', NUMERIC_LIMITS.MONTH.MAX),
+  @Max(NUMBER_LIMITS.MONTH.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('月份', NUMBER_LIMITS.MONTH.MAX),
   })
   @Type(() => Number)
   month?: number;

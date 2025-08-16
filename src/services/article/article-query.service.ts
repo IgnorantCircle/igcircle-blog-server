@@ -2,7 +2,6 @@ import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Article } from '@/entities/article.entity';
-import { Tag } from '@/entities/tag.entity';
 import { ArticleQueryDto, ArticleStatus } from '@/dto/article.dto';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { PaginationUtil } from '@/common/utils/pagination.util';
@@ -88,17 +87,12 @@ export class ArticleQueryService extends BaseService<Article> {
       tagIds,
       sortBy = 'createdAt',
       sortOrder = 'DESC',
-      includeTags = false,
-      includeCategory = true,
     } = options;
 
     const skip = PaginationUtil.calculateSkip(page, limit);
 
-    // 使用优化的查询构建器，根据用户请求动态决定是否包含标签、分类
-    const queryBuilder = this.createOptimizedQueryBuilder('list', {
-      includeTags,
-      includeCategory,
-    });
+    // 使用优化的查询构建器，始终包含标签和分类
+    const queryBuilder = this.createOptimizedQueryBuilder('list');
 
     // 应用过滤条件
     this.applyFilters(queryBuilder, options);
@@ -117,40 +111,7 @@ export class ArticleQueryService extends BaseService<Article> {
     // 执行查询
     const [items, total] = await queryBuilder.getManyAndCount();
 
-    // 如果需要标签信息，批量加载
-    if (items.length > 0 && (!tagIds || tagIds.length === 0)) {
-      await this.loadTagsForArticles(items as any);
-    }
-
     return { items, total };
-  }
-
-  /**
-   * 批量加载文章的标签信息，避免N+1查询
-   */
-  private async loadTagsForArticles(articles: Article[]): Promise<void> {
-    if (articles.length === 0) return;
-
-    const articleIds = articles.map((article) => article.id);
-
-    // 一次性查询所有文章的标签关联
-    const articleTags = await this.articleRepository
-      .createQueryBuilder('article')
-      .leftJoinAndSelect('article.tags', 'tags')
-      .where('article.id IN (:...articleIds)', { articleIds })
-      .select(['article.id', 'tags.id', 'tags.name', 'tags.slug', 'tags.color'])
-      .getMany();
-
-    // 构建标签映射
-    const tagsMap = new Map<string, Tag[]>();
-    articleTags.forEach((article) => {
-      tagsMap.set(article.id, article.tags || []);
-    });
-
-    // 将标签信息分配给对应的文章
-    articles.forEach((article) => {
-      article.tags = tagsMap.get(article.id) || [];
-    });
   }
 
   /**
@@ -275,16 +236,11 @@ export class ArticleQueryService extends BaseService<Article> {
       limit = 10,
       sortBy = 'createdAt',
       sortOrder = 'DESC',
-      includeTags = false,
-      includeCategory = true,
     } = options;
     const skip = PaginationUtil.calculateSkip(page, limit);
 
-    // 使用搜索优化的查询构建器，根据用户请求动态决定是否包含标签、分类
-    const queryBuilder = this.createOptimizedQueryBuilder('search', {
-      includeTags,
-      includeCategory,
-    });
+    // 使用搜索优化的查询构建器，始终包含标签和分类
+    const queryBuilder = this.createOptimizedQueryBuilder('search');
 
     // 应用搜索条件（优化：使用全文搜索或更高效的LIKE查询）
     queryBuilder
@@ -323,11 +279,6 @@ export class ArticleQueryService extends BaseService<Article> {
 
     // 执行查询
     const [items, total] = await queryBuilder.getManyAndCount();
-
-    // 批量加载标签信息
-    if (items.length > 0) {
-      await this.loadTagsForArticles(items);
-    }
 
     return { items, total };
   }
@@ -380,11 +331,17 @@ export class ArticleQueryService extends BaseService<Article> {
       .addOrderBy('month', 'DESC')
       .getRawMany();
 
-    return result.map((item: any) => ({
-      year: parseInt(item.year),
-      month: parseInt(item.month),
-      count: parseInt(item.count),
-    }));
+    return result.map(
+      (item: {
+        year: string | number;
+        month: number | string;
+        count: string | number;
+      }) => ({
+        year: parseInt(item.year as string),
+        month: parseInt(item.month as string),
+        count: parseInt(item.count as string),
+      }),
+    );
   }
 
   /**
@@ -518,11 +475,6 @@ export class ArticleQueryService extends BaseService<Article> {
 
     const result = uniqueArticles.slice(0, limit);
 
-    // 批量加载标签信息
-    if (result.length > 0) {
-      await this.loadTagsForArticles(result);
-    }
-
     return result;
   }
 
@@ -573,10 +525,10 @@ export class ArticleQueryService extends BaseService<Article> {
   ): SelectQueryBuilder<Article> {
     switch (queryType) {
       case 'list':
-        // 列表查询：根据用户请求动态决定是否包含标签和分类
+        // 列表查询：始终包含标签和分类
         return this.createBaseQueryBuilder({
           includeCategory: overrides?.includeCategory ?? true,
-          includeTags: overrides?.includeTags ?? false,
+          includeTags: overrides?.includeTags ?? true,
           includeAuthor: true,
           includeStats: true,
         });
@@ -591,10 +543,10 @@ export class ArticleQueryService extends BaseService<Article> {
         });
 
       case 'search':
-        // 搜索查询：根据用户请求动态决定是否包含标签和分类
+        // 搜索查询：始终包含标签和分类
         return this.createBaseQueryBuilder({
           includeCategory: overrides?.includeCategory ?? true,
-          includeTags: overrides?.includeTags ?? false,
+          includeTags: overrides?.includeTags ?? true,
           includeAuthor: true,
           includeStats: false,
         });
