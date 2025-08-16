@@ -160,3 +160,45 @@ export class LogoutResponseDto {
   @ApiProperty({ description: '消息' })
   message: string;
 }
+
+export class ForgotPasswordDto {
+  @ApiProperty({ description: '邮箱地址' })
+  @IsEmail({}, { message: VALIDATION_MESSAGES.INVALID_EMAIL })
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ description: '重置令牌' })
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @ApiProperty({
+    description: '新密码',
+    minLength: VALIDATION_LIMITS.PASSWORD.MIN,
+    maxLength: VALIDATION_LIMITS.PASSWORD.MAX,
+  })
+  @IsString()
+  @MinLength(VALIDATION_LIMITS.PASSWORD.MIN, {
+    message: VALIDATION_MESSAGES.MIN_LENGTH(
+      '密码',
+      VALIDATION_LIMITS.PASSWORD.MIN,
+    ),
+  })
+  @MaxLength(VALIDATION_LIMITS.PASSWORD.MAX, {
+    message: VALIDATION_MESSAGES.MAX_LENGTH(
+      '密码',
+      VALIDATION_LIMITS.PASSWORD.MAX,
+    ),
+  })
+  newPassword: string;
+}
+
+export class PasswordResetResponseDto {
+  @ApiProperty({ description: '是否成功' })
+  @Type(() => Boolean)
+  success: boolean;
+
+  @ApiProperty({ description: '消息' })
+  message: string;
+}

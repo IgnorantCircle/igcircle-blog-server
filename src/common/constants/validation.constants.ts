@@ -12,7 +12,7 @@ export const VALIDATION_LIMITS = {
   },
   PASSWORD: {
     MIN: 6,
-    MAX: 255,
+    MAX: 512, // 增加到512以支持RSA加密后的密码
   },
   NICKNAME: {
     MIN: 1,

@@ -31,6 +31,9 @@ import {
   SendVerificationCodeDto,
   VerificationCodeResponseDto,
   LogoutResponseDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  PasswordResetResponseDto,
 } from '@/dto/auth.dto';
 import { CreateUserDto } from '@/dto/user.dto';
 import {
@@ -67,8 +70,8 @@ export class AuthController {
     try {
       decryptedPassword = this.rsaService.decrypt(loginDto.password);
     } catch {
-      throw new ValidationException('密码格式错误', [
-        { field: 'password', message: '密码格式错误' },
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'password', message: '用户名或密码错误' },
       ]);
     }
 
@@ -77,10 +80,9 @@ export class AuthController {
     try {
       user = await this.userService.findByUsername(loginDto.username);
     } catch {
-      throw new UnauthorizedException(
-        ErrorCode.USER_INVALID_CREDENTIALS,
-        '用户名或密码错误',
-      );
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'username', message: '用户名或密码错误' },
+      ]);
     }
 
     // 验证密码
@@ -89,10 +91,9 @@ export class AuthController {
       user.password,
     );
     if (!isPasswordValid) {
-      throw new UnauthorizedException(
-        ErrorCode.USER_INVALID_CREDENTIALS,
-        '用户名或密码错误',
-      );
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'password', message: '用户名或密码错误' },
+      ]);
     }
 
     // 检查用户状态
@@ -116,8 +117,13 @@ export class AuthController {
 
     // 将token存储到缓存中
     const decoded = this.jwtService.decode(accessToken) as any;
-    if (decoded && decoded.exp) {
-      const expiresAt = decoded.exp * 1000; // 转换为毫秒
+    if (
+      decoded &&
+      typeof decoded === 'object' &&
+      'exp' in decoded &&
+      decoded.exp
+    ) {
+      const expiresAt = (decoded.exp as number) * 1000; // 转换为毫秒
       await this.cacheService.setUserToken(
         user.id,
         tokenId,
@@ -150,9 +156,8 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '用户名或密码错误' })
   async adminLogin(@Body() loginDto: LoginDto): Promise<LoginResponseDto> {
-    // 管理员登录逻辑与普通用户相同，但可能有额外的权限检查
+    // 管理员登录逻辑与普通用户基本相同，但有额外的权限检查
     const result = await this.login(loginDto);
-    // 这里可以添加管理员特定的逻辑
     return result;
   }
 
@@ -267,13 +272,15 @@ export class AuthController {
     const token = this.extractTokenFromHeader(req);
     if (token) {
       try {
-        interface DecodedToken {
-          exp?: number;
-        }
-        const decoded = this.jwtService.decode(token) as DecodedToken;
-        if (decoded && decoded.exp) {
+        const decoded = this.jwtService.decode(token) as any;
+        if (
+          decoded &&
+          typeof decoded === 'object' &&
+          'exp' in decoded &&
+          decoded.exp
+        ) {
           const now = Math.floor(Date.now() / 1000);
-          const expiresIn = decoded.exp - now;
+          const expiresIn = (decoded.exp as number) - now;
 
           if (expiresIn > 0) {
             // 将token添加到黑名单
@@ -316,5 +323,151 @@ export class AuthController {
   private extractTokenFromHeader(request: ExpressRequest): string | undefined {
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
     return type === 'Bearer' ? token : undefined;
+  }
+
+  @Post('forgot-password')
+  @UsePublicVisibility()
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '忘记密码' })
+  @ApiResponse({
+    status: 200,
+    description: '密码重置邮件发送成功',
+    type: PasswordResetResponseDto,
+  })
+  @ApiResponse({ status: 400, description: '邮箱地址无效' })
+  @ApiResponse({ status: 404, description: '用户不存在' })
+  async forgotPassword(
+    @Body() forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<PasswordResetResponseDto> {
+    try {
+      // 检查用户是否存在
+      const user = await this.userService.findByEmail(forgotPasswordDto.email);
+      if (!user) {
+        // 为了安全考虑，即使用户不存在也返回成功消息
+        // 避免泄露用户信息
+        return {
+          success: true,
+          message: '如果该邮箱地址存在于我们的系统中，您将收到密码重置邮件',
+        };
+      }
+
+      // 检查用户状态
+      if (user.status !== 'active') {
+        return {
+          success: true,
+          message: '如果该邮箱地址存在于我们的系统中，您将收到密码重置邮件',
+        };
+      }
+
+      // 发送密码重置邮件
+      await this.emailService.sendPasswordResetEmail(forgotPasswordDto.email);
+
+      this.logger.log('密码重置邮件发送成功', {
+        action: 'forgotPassword',
+        metadata: {
+          email: forgotPasswordDto.email,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      return {
+        success: true,
+        message: '如果该邮箱地址存在于我们的系统中，您将收到密码重置邮件',
+      };
+    } catch (error) {
+      this.logger.error(
+        '发送密码重置邮件失败',
+        error instanceof Error ? error.stack : undefined,
+        {
+          metadata: {
+            email: forgotPasswordDto.email,
+            operation: 'forgotPassword',
+          },
+        },
+      );
+
+      // 即使发生错误，也返回成功消息以避免信息泄露
+      return {
+        success: true,
+        message: '如果该邮箱地址存在于我们的系统中，您将收到密码重置邮件',
+      };
+    }
+  }
+
+  @Post('reset-password')
+  @UsePublicVisibility()
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '重置密码' })
+  @ApiResponse({
+    status: 200,
+    description: '密码重置成功',
+    type: PasswordResetResponseDto,
+  })
+  @ApiResponse({ status: 400, description: '验证码错误' })
+  async resetPassword(
+    @Body() resetPasswordDto: ResetPasswordDto,
+  ): Promise<PasswordResetResponseDto> {
+    try {
+      // 验证重置令牌并获取邮箱
+      const email = await this.emailService.verifyPasswordResetToken(
+        resetPasswordDto.token,
+      );
+
+      // 解密新密码
+      let decryptedPassword: string;
+      try {
+        decryptedPassword = this.rsaService.decrypt(
+          resetPasswordDto.newPassword,
+        );
+      } catch {
+        throw new ValidationException('密码格式错误', [
+          { field: 'newPassword', message: '密码格式错误' },
+        ]);
+      }
+
+      // 更新用户密码
+      await this.userService.updatePassword(email, decryptedPassword);
+
+      // 删除已使用的重置令牌
+      await this.emailService.deletePasswordResetToken(resetPasswordDto.token);
+
+      this.logger.log('密码重置成功', {
+        action: 'resetPassword',
+        metadata: {
+          email,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      return {
+        success: true,
+        message: '密码重置成功，请使用新密码登录',
+      };
+    } catch (error) {
+      this.logger.error(
+        '密码重置失败',
+        error instanceof Error ? error.stack : undefined,
+        {
+          metadata: {
+            operation: 'resetPassword',
+            timestamp: new Date().toISOString(),
+          },
+        },
+      );
+
+      if (
+        error instanceof BusinessException ||
+        error instanceof ValidationException
+      ) {
+        throw error;
+      }
+
+      throw new BusinessException(
+        ErrorCode.COMMON_INTERNAL_ERROR,
+        '密码重置失败',
+      );
+    }
   }
 }

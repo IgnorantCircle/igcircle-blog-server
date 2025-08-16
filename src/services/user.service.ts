@@ -535,4 +535,66 @@ export class UserService extends BaseService<User> {
       throw new BusinessException(ErrorCode.AUTH_LOGOUT_FAILED, '强制退出失败');
     }
   }
+
+  /**
+   * 更新用户密码
+   */
+  async updatePassword(email: string, newPassword: string): Promise<User> {
+    const startTime = Date.now();
+
+    try {
+      // 查找用户
+      const user = await this.findByEmail(email);
+      if (!user) {
+        this.logger.warn('更新密码失败：用户不存在', {
+          action: 'updatePassword',
+          metadata: { email },
+        });
+        throw new BusinessException(ErrorCode.USER_NOT_FOUND, '用户不存在');
+      }
+
+      // 加密新密码
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // 更新密码
+      await this.userRepository.update(user.id, {
+        password: hashedPassword,
+        updatedAt: new Date(),
+      });
+
+      // 获取更新后的用户信息
+      const updatedUser = await this.findById(user.id);
+      if (!updatedUser) {
+        throw new BusinessException(ErrorCode.USER_NOT_FOUND, '用户更新失败');
+      }
+
+      // 清除该用户的所有令牌，强制重新登录
+      await this.clearAllUserTokens(user.id);
+
+      const duration = Date.now() - startTime;
+      this.logger.business('用户密码更新成功', 'info', {
+        action: 'updatePassword',
+        resource: 'user',
+        metadata: {
+          event: 'password_updated',
+          entityId: user.id,
+          email: user.email,
+          duration,
+        },
+      });
+
+      return updatedUser;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('用户密码更新失败', errorStack, {
+        action: 'updatePassword',
+        resource: 'user',
+        metadata: { duration, error: errorMessage, email },
+      });
+      throw error;
+    }
+  }
 }
