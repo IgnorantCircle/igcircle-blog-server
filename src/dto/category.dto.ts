@@ -17,7 +17,7 @@ import {
 } from './base/base.dto';
 import {
   VALIDATION_MESSAGES,
-  NUMERIC_LIMITS,
+  NUMBER_LIMITS,
 } from '@/common/constants/validation.constants';
 
 export class CreateCategoryDto extends BaseCreateDto {
@@ -35,8 +35,8 @@ export class CreateCategoryDto extends BaseCreateDto {
 
   @ApiPropertyOptional({
     description: '排序权重',
-    minimum: NUMERIC_LIMITS.WEIGHT.MIN,
-    maximum: NUMERIC_LIMITS.WEIGHT.MAX,
+    minimum: NUMBER_LIMITS.WEIGHT.MIN,
+    maximum: NUMBER_LIMITS.WEIGHT.MAX,
   })
   @IsOptional()
   @Type(() => Number)
@@ -46,16 +46,16 @@ export class CreateCategoryDto extends BaseCreateDto {
       message: VALIDATION_MESSAGES.INVALID_NUMBER('排序权重'),
     },
   )
-  @Min(NUMERIC_LIMITS.WEIGHT.MIN, {
+  @Min(NUMBER_LIMITS.WEIGHT.MIN, {
     message: VALIDATION_MESSAGES.MIN_VALUE(
       '排序权重',
-      NUMERIC_LIMITS.WEIGHT.MIN,
+      NUMBER_LIMITS.WEIGHT.MIN,
     ),
   })
-  @Max(NUMERIC_LIMITS.WEIGHT.MAX, {
+  @Max(NUMBER_LIMITS.WEIGHT.MAX, {
     message: VALIDATION_MESSAGES.MAX_VALUE(
       '排序权重',
-      NUMERIC_LIMITS.WEIGHT.MAX,
+      NUMBER_LIMITS.WEIGHT.MAX,
     ),
   })
   sortOrder?: number;
@@ -76,8 +76,8 @@ export class UpdateCategoryDto extends BaseUpdateDto {
 
   @ApiPropertyOptional({
     description: '排序权重',
-    minimum: NUMERIC_LIMITS.WEIGHT.MIN,
-    maximum: NUMERIC_LIMITS.WEIGHT.MAX,
+    minimum: NUMBER_LIMITS.WEIGHT.MIN,
+    maximum: NUMBER_LIMITS.WEIGHT.MAX,
   })
   @IsOptional()
   @Type(() => Number)
@@ -87,16 +87,16 @@ export class UpdateCategoryDto extends BaseUpdateDto {
       message: VALIDATION_MESSAGES.INVALID_NUMBER('排序权重'),
     },
   )
-  @Min(NUMERIC_LIMITS.WEIGHT.MIN, {
+  @Min(NUMBER_LIMITS.WEIGHT.MIN, {
     message: VALIDATION_MESSAGES.MIN_VALUE(
       '排序权重',
-      NUMERIC_LIMITS.WEIGHT.MIN,
+      NUMBER_LIMITS.WEIGHT.MIN,
     ),
   })
-  @Max(NUMERIC_LIMITS.WEIGHT.MAX, {
+  @Max(NUMBER_LIMITS.WEIGHT.MAX, {
     message: VALIDATION_MESSAGES.MAX_VALUE(
       '排序权重',
-      NUMERIC_LIMITS.WEIGHT.MAX,
+      NUMBER_LIMITS.WEIGHT.MAX,
     ),
   })
   sortOrder?: number;

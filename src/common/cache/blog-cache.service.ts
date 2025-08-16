@@ -27,16 +27,26 @@ export class BlogCacheService {
 
   // 缓存时间（毫秒）
   private static readonly TTL = {
-    ARTICLE_LIST: 10 * 60 * 1000, // 10分钟 (毫秒)
-    FEATURED_ARTICLES: 30 * 60 * 1000, // 30分钟 (毫秒)
-    TOP_ARTICLES: 30 * 60 * 1000, // 30分钟 (毫秒)
-    POPULAR_ARTICLES: 15 * 60 * 1000, // 15分钟 (毫秒)
-    RECENT_ARTICLES: 5 * 60 * 1000, // 5分钟 (毫秒)
-    ALL_TAGS: 60 * 60 * 1000, // 1小时 (毫秒)
-    ALL_CATEGORIES: 60 * 60 * 1000, // 1小时 (毫秒)
-    ARTICLE_DETAIL_BY_SLUG: 30 * 60 * 1000, // 30分钟 (毫秒)
-    USER_ONLINE_STATUS: 5 * 60 * 1000, // 5分钟 (毫秒)
-    USER_TOKEN: 24 * 60 * 60 * 1000, // 24小时 (毫秒)
+    // 文章列表缓存时间 - 30分钟
+    ARTICLE_LIST: 30 * 60 * 1000, // 30分钟
+    // 精选文章缓存时间 - 30分钟
+    FEATURED_ARTICLES: 30 * 60 * 1000, // 30分钟
+    // 置顶文章缓存时间 - 30分钟
+    TOP_ARTICLES: 30 * 60 * 1000, // 30分钟
+    // 热门文章缓存时间 - 15分钟
+    POPULAR_ARTICLES: 15 * 60 * 1000, // 15分钟
+    // 最新文章缓存时间 - 5分钟
+    RECENT_ARTICLES: 5 * 60 * 1000, // 5分钟
+    // 全部标签缓存时间 - 1小时
+    ALL_TAGS: 60 * 60 * 1000, // 1小时
+    // 全部分类缓存时间 - 1小时
+    ALL_CATEGORIES: 60 * 60 * 1000, // 1小时
+    // 根据别名获取文章详情缓存时间 - 30分钟
+    ARTICLE_DETAIL_BY_SLUG: 30 * 60 * 1000, // 30分钟
+    // 用户在线状态缓存时间 - 5分钟
+    USER_ONLINE_STATUS: 5 * 60 * 1000, // 5分钟
+    // 用户令牌缓存时间 - 7天
+    USER_TOKEN: 7 * 24 * 60 * 60 * 1000, // 7天
   };
 
   constructor(
@@ -532,17 +542,6 @@ export class BlogCacheService {
       this.logger.debug(`缓存已删除: ${key}`);
     } catch (error) {
       this.logger.error(`删除缓存失败: ${key}`, error);
-    }
-  }
-
-  private async clearPattern(pattern: string): Promise<void> {
-    try {
-      // 简单实现：由于cache-manager v7不支持keys方法，暂时跳过模式清除
-      // 可以考虑使用其他方式实现或升级到支持的缓存存储
-      await Promise.resolve(); // 添加await以满足async要求
-      this.logger.debug(`模式清除暂不支持: ${pattern}`);
-    } catch (error) {
-      this.logger.error(`清除模式缓存失败: ${pattern}`, error);
     }
   }
 

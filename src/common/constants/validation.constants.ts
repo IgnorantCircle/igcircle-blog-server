@@ -102,7 +102,7 @@ export const ARRAY_LIMITS = {
 };
 
 // 数值范围限制
-export const NUMERIC_LIMITS = {
+export const NUMBER_LIMITS = {
   WEIGHT: {
     MIN: 0,
     MAX: 999,

@@ -82,7 +82,6 @@ export class RateLimitMiddleware implements NestMiddleware {
           'X-RateLimit-Remaining': (options.max - 1).toString(),
           'X-RateLimit-Reset': new Date(now + options.windowMs).toISOString(),
         };
-        // console.log('设置限流响应头（首次请求）:', headers);
         res.set(headers);
 
         next();

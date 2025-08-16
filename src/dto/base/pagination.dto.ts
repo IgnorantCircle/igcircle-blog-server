@@ -2,7 +2,7 @@ import { IsOptional, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  NUMERIC_LIMITS,
+  NUMBER_LIMITS,
   VALIDATION_MESSAGES,
 } from '@/common/constants/validation.constants';
 
@@ -13,36 +13,30 @@ export class PaginationDto {
   @ApiPropertyOptional({
     description: '页码',
     default: 1,
-    minimum: NUMERIC_LIMITS.PAGE.MIN,
+    minimum: NUMBER_LIMITS.PAGE.MIN,
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(NUMERIC_LIMITS.PAGE.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('页码', NUMERIC_LIMITS.PAGE.MIN),
+  @Min(NUMBER_LIMITS.PAGE.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('页码', NUMBER_LIMITS.PAGE.MIN),
   })
   page?: number = 1;
 
   @ApiPropertyOptional({
     description: '每页数量',
     default: 10,
-    minimum: NUMERIC_LIMITS.LIMIT.MIN,
-    maximum: NUMERIC_LIMITS.LIMIT.MAX,
+    minimum: NUMBER_LIMITS.LIMIT.MIN,
+    maximum: NUMBER_LIMITS.LIMIT.MAX,
   })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(NUMERIC_LIMITS.LIMIT.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE(
-      '每页数量',
-      NUMERIC_LIMITS.LIMIT.MIN,
-    ),
+  @Min(NUMBER_LIMITS.LIMIT.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('每页数量', NUMBER_LIMITS.LIMIT.MIN),
   })
-  @Max(NUMERIC_LIMITS.LIMIT.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE(
-      '每页数量',
-      NUMERIC_LIMITS.LIMIT.MAX,
-    ),
+  @Max(NUMBER_LIMITS.LIMIT.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('每页数量', NUMBER_LIMITS.LIMIT.MAX),
   })
   limit?: number = 10;
 }

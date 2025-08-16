@@ -64,7 +64,6 @@ export class PublicArticleController {
     Object.assign(publishedQuery, query);
     publishedQuery.status = ArticleStatus.PUBLISHED;
     const result = await this.articleService.findAllPaginated(publishedQuery);
-
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
     return PaginationUtil.fromQueryResult(result, page, limit);

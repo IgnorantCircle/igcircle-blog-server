@@ -6,7 +6,6 @@ import {
   HttpStatus,
   Request,
   UseInterceptors,
-  Logger,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -40,19 +39,19 @@ import {
   ValidationException,
 } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 
 @ApiTags('认证')
 @Controller('/auth')
 @UseInterceptors(FieldVisibilityInterceptor)
 export class AuthController {
-  private readonly logger = new Logger(AuthController.name);
-
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
     private readonly rsaService: RsaService,
     private readonly cacheService: BlogCacheService,
+    private readonly logger: StructuredLoggerService,
   ) {}
 
   @Post('login')
@@ -116,9 +115,9 @@ export class AuthController {
     const accessToken = this.jwtService.sign(payload);
 
     // 将token存储到缓存中
-    const decoded: unknown = this.jwtService.decode(accessToken);
-    if (decoded && typeof decoded === 'object' && 'exp' in decoded) {
-      const expiresAt = (decoded as { exp: number }).exp * 1000; // 转换为毫秒
+    const decoded = this.jwtService.decode(accessToken) as any;
+    if (decoded && decoded.exp) {
+      const expiresAt = decoded.exp * 1000; // 转换为毫秒
       await this.cacheService.setUserToken(
         user.id,
         tokenId,
@@ -271,10 +270,10 @@ export class AuthController {
         interface DecodedToken {
           exp?: number;
         }
-        const decoded: unknown = this.jwtService.decode(token);
-        if (decoded && typeof decoded === 'object' && 'exp' in decoded) {
+        const decoded = this.jwtService.decode(token) as DecodedToken;
+        if (decoded && decoded.exp) {
           const now = Math.floor(Date.now() / 1000);
-          const expiresIn = (decoded as DecodedToken).exp! - now;
+          const expiresIn = decoded.exp - now;
 
           if (expiresIn > 0) {
             // 将token添加到黑名单

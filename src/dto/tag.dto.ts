@@ -8,24 +8,24 @@ import {
   BaseStatsDto,
 } from './base/base.dto';
 import {
-  NUMERIC_LIMITS,
+  NUMBER_LIMITS,
   VALIDATION_MESSAGES,
 } from '@/common/constants/validation.constants';
 
 export class CreateTagDto extends BaseCreateDto {
   @ApiPropertyOptional({
     description: '标签热度',
-    minimum: NUMERIC_LIMITS.HEAT.MIN,
-    maximum: NUMERIC_LIMITS.HEAT.MAX,
+    minimum: NUMBER_LIMITS.HEAT.MIN,
+    maximum: NUMBER_LIMITS.HEAT.MAX,
     default: 0,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.HEAT.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('标签热度', NUMERIC_LIMITS.HEAT.MIN),
+  @Min(NUMBER_LIMITS.HEAT.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('标签热度', NUMBER_LIMITS.HEAT.MIN),
   })
-  @Max(NUMERIC_LIMITS.HEAT.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('标签热度', NUMERIC_LIMITS.HEAT.MAX),
+  @Max(NUMBER_LIMITS.HEAT.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('标签热度', NUMBER_LIMITS.HEAT.MAX),
   })
   @Type(() => Number)
   heat?: number;
@@ -34,16 +34,16 @@ export class CreateTagDto extends BaseCreateDto {
 export class UpdateTagDto extends BaseUpdateDto {
   @ApiPropertyOptional({
     description: '标签热度',
-    minimum: NUMERIC_LIMITS.HEAT.MIN,
-    maximum: NUMERIC_LIMITS.HEAT.MAX,
+    minimum: NUMBER_LIMITS.HEAT.MIN,
+    maximum: NUMBER_LIMITS.HEAT.MAX,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.HEAT.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('标签热度', NUMERIC_LIMITS.HEAT.MIN),
+  @Min(NUMBER_LIMITS.HEAT.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('标签热度', NUMBER_LIMITS.HEAT.MIN),
   })
-  @Max(NUMERIC_LIMITS.HEAT.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('标签热度', NUMERIC_LIMITS.HEAT.MAX),
+  @Max(NUMBER_LIMITS.HEAT.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('标签热度', NUMBER_LIMITS.HEAT.MAX),
   })
   @Type(() => Number)
   heat?: number;
@@ -52,38 +52,38 @@ export class UpdateTagDto extends BaseUpdateDto {
 export class TagQueryDto extends BaseQueryDto {
   @ApiPropertyOptional({
     description: '最小热度',
-    minimum: NUMERIC_LIMITS.HEAT.MIN,
+    minimum: NUMBER_LIMITS.HEAT.MIN,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.HEAT.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('最小热度', NUMERIC_LIMITS.HEAT.MIN),
+  @Min(NUMBER_LIMITS.HEAT.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('最小热度', NUMBER_LIMITS.HEAT.MIN),
   })
   @Type(() => Number)
   minHeat?: number;
 
   @ApiPropertyOptional({
     description: '最大热度',
-    maximum: NUMERIC_LIMITS.HEAT.MAX,
+    maximum: NUMBER_LIMITS.HEAT.MAX,
   })
   @IsOptional()
   @IsInt()
-  @Max(NUMERIC_LIMITS.HEAT.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('最大热度', NUMERIC_LIMITS.HEAT.MAX),
+  @Max(NUMBER_LIMITS.HEAT.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('最大热度', NUMBER_LIMITS.HEAT.MAX),
   })
   @Type(() => Number)
   maxHeat?: number;
 
   @ApiPropertyOptional({
     description: '最小流行度',
-    minimum: NUMERIC_LIMITS.HEAT.MIN,
+    minimum: NUMBER_LIMITS.HEAT.MIN,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.HEAT.MIN, {
+  @Min(NUMBER_LIMITS.HEAT.MIN, {
     message: VALIDATION_MESSAGES.MIN_VALUE(
       '最小流行度',
-      NUMERIC_LIMITS.HEAT.MIN,
+      NUMBER_LIMITS.HEAT.MIN,
     ),
   })
   @Type(() => Number)
@@ -110,40 +110,34 @@ export class TagStatsDto extends BaseStatsDto {
 export class PopularTagsDto {
   @ApiPropertyOptional({
     description: '返回数量',
-    minimum: NUMERIC_LIMITS.LIMIT.MIN,
-    maximum: NUMERIC_LIMITS.LIMIT.MAX,
+    minimum: NUMBER_LIMITS.LIMIT.MIN,
+    maximum: NUMBER_LIMITS.LIMIT.MAX,
     default: 10,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.LIMIT.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE(
-      '返回数量',
-      NUMERIC_LIMITS.LIMIT.MIN,
-    ),
+  @Min(NUMBER_LIMITS.LIMIT.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('返回数量', NUMBER_LIMITS.LIMIT.MIN),
   })
-  @Max(NUMERIC_LIMITS.LIMIT.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE(
-      '返回数量',
-      NUMERIC_LIMITS.LIMIT.MAX,
-    ),
+  @Max(NUMBER_LIMITS.LIMIT.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('返回数量', NUMBER_LIMITS.LIMIT.MAX),
   })
   @Type(() => Number)
   limit?: number = 10;
 
   @ApiPropertyOptional({
     description: '时间范围（天）',
-    minimum: NUMERIC_LIMITS.DAYS.MIN,
-    maximum: NUMERIC_LIMITS.DAYS.MAX,
+    minimum: NUMBER_LIMITS.DAYS.MIN,
+    maximum: NUMBER_LIMITS.DAYS.MAX,
     default: 30,
   })
   @IsOptional()
   @IsInt()
-  @Min(NUMERIC_LIMITS.DAYS.MIN, {
-    message: VALIDATION_MESSAGES.MIN_VALUE('时间范围', NUMERIC_LIMITS.DAYS.MIN),
+  @Min(NUMBER_LIMITS.DAYS.MIN, {
+    message: VALIDATION_MESSAGES.MIN_VALUE('时间范围', NUMBER_LIMITS.DAYS.MIN),
   })
-  @Max(NUMERIC_LIMITS.DAYS.MAX, {
-    message: VALIDATION_MESSAGES.MAX_VALUE('时间范围', NUMERIC_LIMITS.DAYS.MAX),
+  @Max(NUMBER_LIMITS.DAYS.MAX, {
+    message: VALIDATION_MESSAGES.MAX_VALUE('时间范围', NUMBER_LIMITS.DAYS.MAX),
   })
   @Type(() => Number)
   days?: number = 30;
