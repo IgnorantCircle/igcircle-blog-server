@@ -49,6 +49,7 @@ export * from './user.dto';
 // 文章相关DTO
 export * from './article.dto';
 export * from './article-import.dto';
+export * from './article-interaction.dto';
 export * from './publish-article.dto';
 
 // 分类相关DTO

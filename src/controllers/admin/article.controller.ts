@@ -23,6 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { ArticleService } from '@/services/article/article.service';
 import { ArticleStatisticsService } from '@/services/article/article-statistics.service';
+import { ArticleInteractionService } from '@/services/article/article-interaction.service';
 
 import { RolesGuard } from '@/guards/roles.guard';
 import { Roles } from '@/decorators/roles.decorator';
@@ -74,6 +75,7 @@ export class AdminArticleController {
   constructor(
     private readonly articleService: ArticleService,
     private readonly articleStatisticsService: ArticleStatisticsService,
+    private readonly articleInteractionService: ArticleInteractionService,
   ) {}
 
   @Post()
@@ -196,8 +198,26 @@ export class AdminArticleController {
     description: '获取成功',
     type: UnifiedArticleDetailDto,
   })
-  async findById(@Param('id', ParseUUIDPipe) id: string): Promise<Article> {
+  async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user?: CurrentUserType,
+  ): Promise<Article & { isLiked?: boolean; isFavorited?: boolean }> {
     const article = await this.articleService.findById(id);
+
+    // 如果用户已登录，添加点赞和收藏状态
+    if (user) {
+      const [isLiked, isFavorited] = await Promise.all([
+        this.articleInteractionService.checkUserLike(user.sub, id),
+        this.articleInteractionService.checkUserFavorite(user.sub, id),
+      ]);
+
+      return {
+        ...article,
+        isLiked,
+        isFavorited,
+      };
+    }
+
     return article;
   }
 

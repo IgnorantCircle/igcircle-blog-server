@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import { ArticleService } from '@/services/article/article.service';
 import { ArticleQueryService } from '@/services/article/article-query.service';
 import { ArticleStatisticsService } from '@/services/article/article-statistics.service';
+import { ArticleInteractionService } from '@/services/article/article-interaction.service';
 import { Public } from '@/decorators/public.decorator';
 import { CurrentUser } from '@/decorators/user.decorator';
 import {
@@ -46,6 +47,7 @@ export class PublicArticleController {
     private readonly articleService: ArticleService,
     private readonly articleQueryService: ArticleQueryService,
     private readonly articleStatisticsService: ArticleStatisticsService,
+    private readonly articleInteractionService: ArticleInteractionService,
     @InjectRepository(Article)
     private readonly articleRepository: Repository<Article>,
   ) {}
@@ -180,13 +182,26 @@ export class PublicArticleController {
     const userAgent = req.get('User-Agent') || null;
     const isAdmin = user?.role === 'admin';
 
-    await this.articleService.recordView(
+    await this.articleInteractionService.recordView(
       id,
       user?.sub || null,
       ipAddress,
       userAgent,
       isAdmin,
     );
+
+    // 如果用户已登录，添加点赞收藏状态
+    if (user) {
+      const [isLiked, isFavorited] = await Promise.all([
+        this.articleInteractionService.checkUserLike(user.sub, id),
+        this.articleInteractionService.checkUserFavorite(user.sub, id),
+      ]);
+      return {
+        ...article,
+        isLiked,
+        isFavorited,
+      };
+    }
 
     return article;
   }
@@ -220,13 +235,26 @@ export class PublicArticleController {
     const userAgent = req.get('User-Agent') || null;
     const isAdmin = user?.role === 'admin';
 
-    await this.articleService.recordView(
+    await this.articleInteractionService.recordView(
       article.id,
       user?.sub || null,
       ipAddress,
       userAgent,
       isAdmin,
     );
+
+    // 如果用户已登录，添加点赞收藏状态
+    if (user) {
+      const [isLiked, isFavorited] = await Promise.all([
+        this.articleInteractionService.checkUserLike(user.sub, article.id),
+        this.articleInteractionService.checkUserFavorite(user.sub, article.id),
+      ]);
+      return {
+        ...article,
+        isLiked,
+        isFavorited,
+      };
+    }
 
     return article;
   }
