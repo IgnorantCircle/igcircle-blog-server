@@ -295,7 +295,9 @@ export class CategoryService extends BaseService<Category> {
     }
 
     // 使用BaseService的softRemove方法
-    await super.remove(id);
+    await super.softRemove(id);
+    // 清除分类缓存
+    await this.blogCacheService.clearCategoryCache();
   }
 
   async getTree(): Promise<Category[]> {

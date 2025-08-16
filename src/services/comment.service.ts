@@ -281,7 +281,7 @@ export class CommentService extends BaseService<Comment> {
     }
 
     // 使用BaseService的softRemove方法
-    await super.remove(id);
+    await super.softRemove(id);
 
     // 更新文章评论数
     await this.articleRepository.decrement(
