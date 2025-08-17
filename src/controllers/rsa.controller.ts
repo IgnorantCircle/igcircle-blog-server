@@ -13,7 +13,7 @@ import {
   UsePublicVisibility,
 } from '@/common/interceptors/field-visibility.interceptor';
 
-@ApiTags('RSA加密')
+@ApiTags('4.2 开发工具API - RSA加密')
 @Controller('rsa')
 @UseInterceptors(FieldVisibilityInterceptor)
 export class RsaController {

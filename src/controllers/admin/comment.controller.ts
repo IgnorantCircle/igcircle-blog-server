@@ -39,7 +39,7 @@ import {
 } from '@/common/interceptors/field-visibility.interceptor';
 import { PaginationUtil } from '@/common/utils/pagination.util';
 
-@ApiTags('管理员评论管理')
+@ApiTags('1.4 管理端API - 评论管理')
 @Controller('admin/comments')
 @UseGuards(RolesGuard)
 @Roles(Role.ADMIN)

@@ -43,7 +43,7 @@ type CommentWithLikeStatus = Comment & {
   replies?: CommentWithLikeStatus[];
 };
 
-@ApiTags('用户评论')
+@ApiTags('2.2 用户端API - 评论管理')
 @Controller('user/comments')
 @UseInterceptors(FieldVisibilityInterceptor)
 export class UserCommentController {

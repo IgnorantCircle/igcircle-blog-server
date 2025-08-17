@@ -35,7 +35,7 @@ import {
   UseAdminVisibility,
 } from '@/common/interceptors/field-visibility.interceptor';
 
-@ApiTags('管理端API - 标签管理')
+@ApiTags('1.5 管理端API - 标签管理')
 @Controller('admin/tags')
 @UseGuards(RolesGuard)
 @Roles(Role.ADMIN)

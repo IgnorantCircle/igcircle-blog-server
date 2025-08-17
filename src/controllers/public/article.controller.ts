@@ -38,7 +38,7 @@ interface CurrentUserType {
   role: string;
 }
 
-@ApiTags('公共API - 文章')
+@ApiTags('3.1 公共API - 文章')
 @Controller('articles')
 @Public()
 @UseInterceptors(FieldVisibilityInterceptor)

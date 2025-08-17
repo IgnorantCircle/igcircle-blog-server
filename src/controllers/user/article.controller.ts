@@ -30,7 +30,7 @@ interface CurrentUserType {
   email: string;
 }
 
-@ApiTags('用户API - 文章操作')
+@ApiTags('2.1 用户端API - 文章操作')
 @Controller('user/articles')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

@@ -26,7 +26,7 @@ import {
 import { PaginationUtil } from '@/common/utils/pagination.util';
 import { PaginatedResponse } from '@/common/interfaces/response.interface';
 
-@ApiTags('示例接口')
+@ApiTags('5 示例API - 示例接口')
 @Controller('examples')
 @Public()
 @UseInterceptors(FieldVisibilityInterceptor)

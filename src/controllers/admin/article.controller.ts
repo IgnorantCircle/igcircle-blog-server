@@ -65,7 +65,7 @@ type BatchExportResult =
   | { files: { filename: string; content: string }[] }
   | Record<string, unknown>[];
 
-@ApiTags('管理端API - 文章')
+@ApiTags('1.2 管理端API - 文章管理')
 @Controller('admin/articles')
 @UseGuards(RolesGuard)
 @Roles(Role.ADMIN)

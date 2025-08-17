@@ -45,7 +45,6 @@ async function bootstrap() {
     .setTitle('igCircle Blog API')
     .setDescription('igCircle博客系统API文档')
     .setVersion('1.0')
-    .addTag('users', '用户管理')
     .addBearerAuth(
       {
         type: 'http',
@@ -57,6 +56,22 @@ async function bootstrap() {
       },
       'JWT-auth',
     )
+    .addTag('1.1 管理端API - 文章导入')
+    .addTag('1.2 管理端API - 文章管理')
+    .addTag('1.3 管理端API - 分类管理')
+    .addTag('1.4 管理端API - 评论管理')
+    .addTag('1.5 管理端API - 标签管理')
+    .addTag('1.6 管理端API - 用户管理')
+    .addTag('2.1 用户端API - 文章操作')
+    .addTag('2.2 用户端API - 评论管理')
+    .addTag('2.3 用户端API - 个人资料')
+    .addTag('3.1 公共API - 文章')
+    .addTag('3.2 公共API - 分类')
+    .addTag('3.3 公共API - 标签')
+    .addTag('4.1 认证API - 登录注册')
+    .addTag('4.2 开发工具API - RSA加密')
+    .addTag('5 示例API - 示例接口')
+    .addTag('6 开发工具API - 缓存管理')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

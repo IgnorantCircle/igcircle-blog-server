@@ -43,7 +43,7 @@ export interface UserStatistics {
   totalShares: number;
 }
 
-@ApiTags('用户端API - 个人资料')
+@ApiTags('2.3 用户端API - 个人资料')
 @Controller('users/profile')
 @UseGuards(RolesGuard)
 @Roles(Role.USER, Role.ADMIN)

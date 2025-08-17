@@ -16,7 +16,7 @@ import {
   UsePublicVisibility,
 } from '@/common/interceptors/field-visibility.interceptor';
 
-@ApiTags('公共API - 分类')
+@ApiTags('3.2 公共API - 分类')
 @Controller('categories')
 @Public()
 @UseInterceptors(FieldVisibilityInterceptor)

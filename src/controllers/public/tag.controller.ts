@@ -16,7 +16,7 @@ import {
   UsePublicVisibility,
 } from '@/common/interceptors/field-visibility.interceptor';
 
-@ApiTags('公共API - 标签')
+@ApiTags('3.3 公共API - 标签')
 @Controller('tags')
 @Public()
 @UseInterceptors(FieldVisibilityInterceptor)

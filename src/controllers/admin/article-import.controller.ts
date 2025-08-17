@@ -49,7 +49,7 @@ import {
   RawImportConfigData,
 } from '@/services/article-import/common/config-validation.service';
 
-@ApiTags('管理端 - 文章导入')
+@ApiTags('1.1 管理端API - 文章导入')
 @Controller('admin/articles/import')
 @UseGuards(RolesGuard)
 @Roles(Role.ADMIN)

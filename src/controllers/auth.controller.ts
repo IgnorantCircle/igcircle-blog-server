@@ -44,7 +44,15 @@ import {
 import { ErrorCode } from '@/common/constants/error-codes';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 
-@ApiTags('认证')
+interface JwtPayload {
+  sub: string;
+  username: string;
+  tokenId: string;
+  exp: number;
+  iat: number;
+}
+
+@ApiTags('4.1 认证API - 登录注册')
 @Controller('/auth')
 @UseInterceptors(FieldVisibilityInterceptor)
 export class AuthController {
@@ -116,14 +124,14 @@ export class AuthController {
     const accessToken = this.jwtService.sign(payload);
 
     // 将token存储到缓存中
-    const decoded = this.jwtService.decode(accessToken) as any;
+    const decoded = this.jwtService.decode(accessToken) as JwtPayload;
     if (
       decoded &&
       typeof decoded === 'object' &&
       'exp' in decoded &&
       decoded.exp
     ) {
-      const expiresAt = (decoded.exp as number) * 1000; // 转换为毫秒
+      const expiresAt = decoded.exp * 1000; // 转换为毫秒
       await this.cacheService.setUserToken(
         user.id,
         tokenId,
@@ -272,7 +280,7 @@ export class AuthController {
     const token = this.extractTokenFromHeader(req);
     if (token) {
       try {
-        const decoded = this.jwtService.decode(token) as any;
+        const decoded = this.jwtService.decode(token) as JwtPayload;
         if (
           decoded &&
           typeof decoded === 'object' &&
@@ -280,7 +288,7 @@ export class AuthController {
           decoded.exp
         ) {
           const now = Math.floor(Date.now() / 1000);
-          const expiresIn = (decoded.exp as number) - now;
+          const expiresIn = decoded.exp - now;
 
           if (expiresIn > 0) {
             // 将token添加到黑名单

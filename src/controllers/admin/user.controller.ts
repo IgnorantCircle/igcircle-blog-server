@@ -42,7 +42,7 @@ interface OnlineStatusResponse {
   lastActiveAt: number | null;
 }
 
-@ApiTags('管理端API - 用户')
+@ApiTags('1.6 管理端API - 用户管理')
 @Controller('admin/users')
 @UseGuards(RolesGuard)
 @Roles(Role.ADMIN)
