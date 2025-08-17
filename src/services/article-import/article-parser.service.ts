@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import matter from 'gray-matter';
 import * as path from 'path';
+import readingTime from 'reading-time';
 import { Article } from '@/entities/article.entity';
 import {
   ParsedArticleData,
@@ -52,7 +53,6 @@ interface ArticleFrontmatter
 @Injectable()
 export class ArticleParserService {
   // 常量定义
-  private static readonly WORDS_PER_MINUTE = 200;
   private static readonly MAX_SUMMARY_LENGTH = 200;
   private static readonly MAX_SLUG_LENGTH = 100;
   private static readonly SUPPORTED_EXTENSIONS = ['.md', '.markdown'];
@@ -347,10 +347,11 @@ export class ArticleParserService {
 
   /**
    * 计算阅读时间
+   * 使用 reading-time 库计算
    */
   private calculateReadingTime(content: string): number {
-    const words = content.trim().split(/\s+/).length;
-    return Math.ceil(words / ArticleParserService.WORDS_PER_MINUTE);
+    const stats = readingTime(content);
+    return stats.minutes;
   }
 
   /**
