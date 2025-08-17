@@ -13,7 +13,7 @@ import {
 } from '../services/dev-cache.service';
 import { Public } from '../decorators/public.decorator';
 
-@ApiTags('开发工具 - 缓存管理')
+@ApiTags('6 开发工具API - 缓存管理')
 @Controller('dev/cache')
 @Public() // 开发环境不需要认证
 export class DevCacheController {
@@ -71,7 +71,7 @@ export class DevCacheController {
   @Get('memory-usage')
   @ApiOperation({ summary: '获取内存使用情况' })
   @ApiResponse({ status: 200, description: '内存使用情况' })
-  async getMemoryUsage() {
+  getMemoryUsage() {
     return this.devCacheService.getMemoryUsage();
   }
 }

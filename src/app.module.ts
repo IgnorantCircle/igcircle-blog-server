@@ -1,7 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CacheModule } from '@nestjs/cache-manager';
 import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { UserModule } from '@/modules/user.module';
 import { ArticleModule } from '@/modules/article.module';
@@ -16,13 +15,13 @@ import { UserApiModule } from '@/modules/user-api.module';
 import { ArticleImportModule } from '@/modules/article-import.module';
 import { CommonModule } from '@/common/common.module';
 import { getDatabaseConfig } from '@/config/database.config';
-import { getRedisConfig } from '@/config/redis.config';
 import { configFactory } from '@/common/config/config.validation';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import { ResponseInterceptor } from '@/common/interceptors/response.interceptor';
 import { SharedAuthModule } from '@/modules/shared-auth.module';
 import { JwtAuthGuard } from '@/guards/auth.guard';
 import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
+import { DevModule } from '@/modules/dev.module';
 
 @Module({
   imports: [
@@ -45,14 +44,6 @@ import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
       inject: [ConfigService],
     }),
 
-    // Redis缓存模块
-    CacheModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: getRedisConfig,
-      inject: [ConfigService],
-      isGlobal: true,
-    }),
-
     // 业务模块
     UserModule,
     ArticleModule,
@@ -69,6 +60,9 @@ import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
     PublicModule,
     UserApiModule,
     AdminModule,
+
+    // 开发环境模块（生产环境需要删除）
+    DevModule,
   ],
   providers: [
     // 全局认证守卫
