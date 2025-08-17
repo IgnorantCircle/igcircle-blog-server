@@ -195,10 +195,9 @@ export class ArticleService extends BaseService<Article> {
   ): Promise<{ items: Article[]; total: number }> {
     const options: ArticleQueryOptions = {
       ...query,
-      sortBy: query.sortBy || 'createdAt',
+      sortBy: query.sortBy || 'updatedAt',
       sortOrder: query.sortOrder || 'DESC',
     };
-
     return this.articleQueryService.findAllPaginated(options);
   }
 
@@ -339,6 +338,9 @@ export class ArticleService extends BaseService<Article> {
       });
     }
 
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(savedArticle.slug, 'update');
+
     return savedArticle;
   }
 
@@ -365,6 +367,9 @@ export class ArticleService extends BaseService<Article> {
     const tagIds = article.tags?.map((tag) => tag.id) || [];
 
     await this.articleRepository.softDelete(id);
+
+    // 清除相关缓存
+    await this.blogCacheService.clearArticleCache(article.slug, 'delete');
 
     // 如果文章已发布，更新标签和分类的文章数量
     if (article.status === 'published') {

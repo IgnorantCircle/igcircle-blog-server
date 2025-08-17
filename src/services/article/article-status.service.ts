@@ -50,11 +50,22 @@ export class ArticleStatusService {
       );
     }
 
-    article.status = 'published';
-    article.publishedAt = publishDto?.publishedAt || new Date();
-    article.updatedAt = new Date();
+    // 使用update方法而不是save方法，避免意外覆盖其他字段
+    await this.articleRepository.update(id, {
+      status: 'published',
+      publishedAt: publishDto?.publishedAt || new Date(),
+      updatedAt: new Date(),
+    });
 
-    const updatedArticle = await this.articleRepository.save(article);
+    // 重新获取更新后的文章
+    const updatedArticle = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
+
+    if (!updatedArticle) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
 
     // 更新标签和分类的文章数量
     const tagIds = article.tags?.map((tag) => tag.id) || [];
@@ -113,12 +124,21 @@ export class ArticleStatusService {
         '文章未发布',
       );
     }
+    await this.articleRepository.update(id, {
+      status: 'draft',
+      publishedAt: null,
+      updatedAt: new Date(),
+    });
 
-    article.status = 'draft';
-    article.publishedAt = null;
-    article.updatedAt = new Date();
+    // 重新获取更新后的文章
+    const updatedArticle = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
 
-    const updatedArticle = await this.articleRepository.save(article);
+    if (!updatedArticle) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
 
     // 更新标签和分类的文章数量
     const tagIds = article.tags?.map((tag) => tag.id) || [];
@@ -175,10 +195,20 @@ export class ArticleStatusService {
       );
     }
 
-    article.status = 'archived';
-    article.updatedAt = new Date();
+    await this.articleRepository.update(id, {
+      status: 'archived',
+      updatedAt: new Date(),
+    });
 
-    const updatedArticle = await this.articleRepository.save(article);
+    // 重新获取更新后的文章
+    const updatedArticle = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
+
+    if (!updatedArticle) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
 
     // 清除相关缓存 - 归档操作
     await this.blogCacheService.clearArticleCache(article.slug, 'archive');
@@ -206,10 +236,21 @@ export class ArticleStatusService {
       );
     }
 
-    article.status = 'draft';
-    article.updatedAt = new Date();
+    // 使用update方法而不是save方法，避免意外覆盖其他字段
+    await this.articleRepository.update(id, {
+      status: 'draft',
+      updatedAt: new Date(),
+    });
 
-    const updatedArticle = await this.articleRepository.save(article);
+    // 重新获取更新后的文章
+    const updatedArticle = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
+
+    if (!updatedArticle) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
 
     // 清除相关缓存
     await this.blogCacheService.clearArticleCache(article.slug, 'archive');
@@ -230,10 +271,20 @@ export class ArticleStatusService {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
-    article.isFeatured = featured;
-    article.updatedAt = new Date();
+    await this.articleRepository.update(id, {
+      isFeatured: featured,
+      updatedAt: new Date(),
+    });
 
-    const updatedArticle = await this.articleRepository.save(article);
+    // 重新获取更新后的文章
+    const updatedArticle = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
+
+    if (!updatedArticle) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
 
     // 清除相关缓存 - 精选状态变更
     await this.blogCacheService.clearArticleCache(article.slug, 'feature');
@@ -254,10 +305,20 @@ export class ArticleStatusService {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
-    article.isTop = top;
-    article.updatedAt = new Date();
+    await this.articleRepository.update(id, {
+      isTop: top,
+      updatedAt: new Date(),
+    });
 
-    const updatedArticle = await this.articleRepository.save(article);
+    // 重新获取更新后的文章
+    const updatedArticle = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
+
+    if (!updatedArticle) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
 
     // 清除相关缓存 - 置顶状态变更
     await this.blogCacheService.clearArticleCache(article.slug, 'top');
@@ -278,10 +339,24 @@ export class ArticleStatusService {
       throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
     }
 
-    article.isVisible = !article.isVisible;
+    const newVisibility = !article.isVisible;
+    article.isVisible = newVisibility;
     article.updatedAt = new Date();
 
-    const updatedArticle = await this.articleRepository.save(article);
+    await this.articleRepository.update(id, {
+      isVisible: newVisibility,
+      updatedAt: new Date(),
+    });
+
+    // 重新获取更新后的文章
+    const updatedArticle = await this.articleRepository.findOne({
+      where: { id },
+      relations: ['tags'],
+    });
+
+    if (!updatedArticle) {
+      throw new NotFoundException(ErrorCode.ARTICLE_NOT_FOUND);
+    }
 
     // 清除文章相关缓存
     await this.blogCacheService.clearArticleCache(article.slug);
@@ -290,7 +365,7 @@ export class ArticleStatusService {
       metadata: {
         articleId: id,
         title: article.title,
-        isVisible: article.isVisible,
+        isVisible: newVisibility,
       },
     });
 

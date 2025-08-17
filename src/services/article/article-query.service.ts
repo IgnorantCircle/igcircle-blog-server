@@ -161,7 +161,7 @@ export class ArticleQueryService extends BaseService<Article> {
       const recentOptions: ArticleQueryOptions = {
         ...options,
         status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
-        sortBy: 'createdAt',
+        sortBy: 'updatedAt',
         sortOrder: 'DESC',
       };
       return this.executeQuery(recentOptions);
@@ -177,7 +177,7 @@ export class ArticleQueryService extends BaseService<Article> {
     const recentOptions: ArticleQueryOptions = {
       ...options,
       status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
-      sortBy: 'createdAt',
+      sortBy: 'updatedAt',
       sortOrder: 'DESC',
     };
     const result = await this.executeQuery(recentOptions);
@@ -198,7 +198,7 @@ export class ArticleQueryService extends BaseService<Article> {
         ...options,
         status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
         isFeatured: true,
-        sortBy: 'createdAt',
+        sortBy: 'updatedAt',
         sortOrder: 'DESC',
       };
       return this.executeQuery(featuredOptions);
@@ -215,7 +215,7 @@ export class ArticleQueryService extends BaseService<Article> {
       ...options,
       status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
       isFeatured: true,
-      sortBy: 'createdAt',
+      sortBy: 'updatedAt',
       sortOrder: 'DESC',
     };
     const result = await this.executeQuery(featuredOptions);
@@ -269,7 +269,7 @@ export class ArticleQueryService extends BaseService<Article> {
         .setParameter('titleKeyword', `%${keyword}%`)
         .setParameter('summaryKeyword', `%${keyword}%`)
         .orderBy('relevance', 'DESC')
-        .addOrderBy('article.publishedAt', 'DESC');
+        .addOrderBy('article.updatedAt', 'DESC');
     } else {
       queryBuilder.orderBy(`article.${sortBy}`, sortOrder);
     }
@@ -299,13 +299,13 @@ export class ArticleQueryService extends BaseService<Article> {
       .andWhere('article.isVisible = :isVisible', { isVisible: true });
 
     if (year) {
-      queryBuilder.andWhere('YEAR(article.publishedAt) = :year', { year });
+      queryBuilder.andWhere('YEAR(article.updatedAt) = :year', { year });
     }
     if (month) {
-      queryBuilder.andWhere('MONTH(article.publishedAt) = :month', { month });
+      queryBuilder.andWhere('MONTH(article.updatedAt) = :month', { month });
     }
 
-    queryBuilder.orderBy('article.publishedAt', 'DESC').skip(skip).take(limit);
+    queryBuilder.orderBy('article.updatedAt', 'DESC').skip(skip).take(limit);
 
     const [items, total] = await queryBuilder.getManyAndCount();
 
@@ -357,7 +357,7 @@ export class ArticleQueryService extends BaseService<Article> {
       status: ArticleStatus.PUBLISHED,
       page,
       limit,
-      sortBy: 'publishedAt',
+      sortBy: 'updatedAt',
       sortOrder: 'DESC',
     });
   }
@@ -375,7 +375,7 @@ export class ArticleQueryService extends BaseService<Article> {
       status: ArticleStatus.PUBLISHED,
       page,
       limit,
-      sortBy: 'publishedAt',
+      sortBy: 'updatedAt',
       sortOrder: 'DESC',
     });
   }
