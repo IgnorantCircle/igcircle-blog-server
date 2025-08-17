@@ -164,9 +164,94 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '登录成功', type: LoginResponseDto })
   @ApiResponse({ status: 400, description: '用户名或密码错误' })
   async adminLogin(@Body() loginDto: LoginDto): Promise<LoginResponseDto> {
-    // 管理员登录逻辑与普通用户基本相同，但有额外的权限检查
-    const result = await this.login(loginDto);
-    return result;
+    // 解密密码
+    let decryptedPassword: string;
+    try {
+      decryptedPassword = this.rsaService.decrypt(loginDto.password);
+    } catch {
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'password', message: '用户名或密码错误' },
+      ]);
+    }
+
+    // 查找用户
+    let user: User;
+    try {
+      user = await this.userService.findByUsername(loginDto.username);
+    } catch {
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'username', message: '用户名或密码错误' },
+      ]);
+    }
+
+    // 验证密码
+    const isPasswordValid = await bcrypt.compare(
+      decryptedPassword,
+      user.password,
+    );
+    if (!isPasswordValid) {
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'password', message: '用户名或密码错误' },
+      ]);
+    }
+
+    // 检查用户状态
+    if (user.status !== 'active') {
+      throw new UnauthorizedException(
+        ErrorCode.USER_ACCOUNT_DISABLED,
+        '用户账户已被禁用',
+      );
+    }
+
+    // 检查管理员权限
+    if (user.role !== 'admin') {
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'username', message: '用户名或密码错误' },
+      ]);
+    }
+
+    // 生成JWT token
+    const tokenId = uuidv4();
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      jti: tokenId,
+    };
+    const accessToken = this.jwtService.sign(payload);
+
+    // 将token存储到缓存中
+    const decoded = this.jwtService.decode(accessToken) as JwtPayload;
+    if (
+      decoded &&
+      typeof decoded === 'object' &&
+      'exp' in decoded &&
+      decoded.exp
+    ) {
+      const expiresAt = decoded.exp * 1000; // 转换为毫秒
+      await this.cacheService.setUserToken(
+        user.id,
+        tokenId,
+        accessToken,
+        expiresAt,
+        'admin-login',
+      );
+    }
+
+    return {
+      success: true,
+      message: '登录成功',
+      accessToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        nickname: user.nickname,
+        avatar: user.avatar,
+      },
+    };
   }
 
   @Post('send-verification-code')

@@ -28,7 +28,7 @@ import { DevModule } from '@/modules/dev.module';
     // 配置模块（带验证）
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env.development.local', '.env'],
       load: [configFactory],
       validate: configFactory,
     }),

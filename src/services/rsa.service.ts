@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { BusinessException } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
@@ -25,8 +27,25 @@ export class RsaService {
    */
   private initializeKeys(): void {
     try {
-      // 尝试从环境变量获取私钥
-      const privateKeyPem = this.configService.get<string>('RSA_PRIVATE_KEY');
+      let privateKeyPem: string | null = null;
+
+      // 1. 优先从文件读取私钥
+      const privateKeyPath = path.join(process.cwd(), 'certs', 'private.pem');
+      if (fs.existsSync(privateKeyPath)) {
+        privateKeyPem = fs.readFileSync(privateKeyPath, 'utf8');
+        this.logger.log('从文件加载RSA私钥', {
+          metadata: { operation: 'initializeKeys', source: 'file' },
+        });
+      } else {
+        // 2. 如果文件不存在，尝试从环境变量获取私钥
+        privateKeyPem =
+          this.configService.get<string>('RSA_PRIVATE_KEY') || null;
+        if (privateKeyPem) {
+          this.logger.log('从环境变量加载RSA私钥', {
+            metadata: { operation: 'initializeKeys', source: 'env' },
+          });
+        }
+      }
 
       if (privateKeyPem) {
         // 使用配置的私钥
@@ -57,9 +76,9 @@ export class RsaService {
         this.publicKey = crypto.createPublicKey(publicKey);
 
         this.logger.warn(
-          '警告: 未配置RSA私钥，已生成临时密钥对。生产环境请配置固定密钥。',
+          '警告: 未找到RSA私钥文件或环境变量，已生成临时密钥对。生产环境请配置固定密钥。',
           {
-            metadata: { operation: 'initializeKeys' },
+            metadata: { operation: 'initializeKeys', source: 'generated' },
           },
         );
       }
