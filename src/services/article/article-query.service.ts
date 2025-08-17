@@ -2,7 +2,11 @@ import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Article } from '@/entities/article.entity';
-import { ArticleQueryDto, ArticleStatus } from '@/dto/article.dto';
+import {
+  ArticleQueryDto,
+  ArticleStatus,
+  ArticleSearchMode,
+} from '@/dto/article.dto';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { PaginationUtil } from '@/common/utils/pagination.util';
 import { BaseService } from '@/common/base/base.service';
@@ -115,39 +119,50 @@ export class ArticleQueryService extends BaseService<Article> {
   }
 
   /**
+   * 通用的缓存查询方法
+   */
+  private async executeWithCache(
+    getCacheMethod: () => Promise<ArticleQueryResult | null>,
+    setCacheMethod: (data: ArticleQueryResult) => Promise<void>,
+    queryOptions: ArticleQueryOptions,
+  ): Promise<ArticleQueryResult> {
+    // 如果不使用缓存，直接执行查询
+    if (!this.cacheManager) {
+      return this.executeQuery(queryOptions);
+    }
+
+    // 尝试从缓存获取数据
+    const cached = await getCacheMethod();
+    if (cached) {
+      return cached;
+    }
+
+    // 执行查询并缓存结果
+    const result = await this.executeQuery(queryOptions);
+    await setCacheMethod(result);
+
+    return result;
+  }
+
+  /**
    * 获取热门文章
    */
   async getPopularArticles(
     options: ArticleQueryOptions = {},
   ): Promise<ArticleQueryResult> {
-    // 如果不使用缓存，直接执行查询
-    if (!this.cacheManager) {
-      const popularOptions: ArticleQueryOptions = {
-        ...options,
-        status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
-        sortBy: 'viewCount',
-        sortOrder: 'DESC',
-      };
-      return this.executeQuery(popularOptions);
-    }
-
-    // 尝试从缓存获取热门文章
-    const cached = await this.cacheManager.getPopularArticles();
-    if (cached) {
-      return cached as ArticleQueryResult;
-    }
-
-    // 执行查询并缓存结果
-    const popularOptions: ArticleQueryOptions = {
+    const queryOptions: ArticleQueryOptions = {
       ...options,
-      status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
+      status: ArticleStatus.PUBLISHED,
       sortBy: 'viewCount',
       sortOrder: 'DESC',
     };
-    const result = await this.executeQuery(popularOptions);
-    await this.cacheManager.setPopularArticles(result);
 
-    return result;
+    return this.executeWithCache(
+      () =>
+        this.cacheManager.getPopularArticles() as Promise<ArticleQueryResult | null>,
+      (data) => this.cacheManager.setPopularArticles(data),
+      queryOptions,
+    );
   }
 
   /**
@@ -156,34 +171,19 @@ export class ArticleQueryService extends BaseService<Article> {
   async getRecentArticles(
     options: ArticleQueryOptions = {},
   ): Promise<ArticleQueryResult> {
-    // 如果不使用缓存，直接执行查询
-    if (!this.cacheManager) {
-      const recentOptions: ArticleQueryOptions = {
-        ...options,
-        status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
-        sortBy: 'updatedAt',
-        sortOrder: 'DESC',
-      };
-      return this.executeQuery(recentOptions);
-    }
-
-    // 尝试从缓存获取最新文章
-    const cached = await this.cacheManager.getRecentArticles();
-    if (cached) {
-      return cached as ArticleQueryResult;
-    }
-
-    // 执行查询并缓存结果
-    const recentOptions: ArticleQueryOptions = {
+    const queryOptions: ArticleQueryOptions = {
       ...options,
-      status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
+      status: ArticleStatus.PUBLISHED,
       sortBy: 'updatedAt',
       sortOrder: 'DESC',
     };
-    const result = await this.executeQuery(recentOptions);
-    await this.cacheManager.setRecentArticles(result);
 
-    return result;
+    return this.executeWithCache(
+      () =>
+        this.cacheManager.getRecentArticles() as Promise<ArticleQueryResult | null>,
+      (data) => this.cacheManager.setRecentArticles(data),
+      queryOptions,
+    );
   }
 
   /**
@@ -192,36 +192,20 @@ export class ArticleQueryService extends BaseService<Article> {
   async getFeaturedArticles(
     options: ArticleQueryOptions = {},
   ): Promise<ArticleQueryResult> {
-    // 如果不使用缓存，直接执行查询
-    if (!this.cacheManager) {
-      const featuredOptions: ArticleQueryOptions = {
-        ...options,
-        status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
-        isFeatured: true,
-        sortBy: 'updatedAt',
-        sortOrder: 'DESC',
-      };
-      return this.executeQuery(featuredOptions);
-    }
-
-    // 尝试从缓存获取精选文章
-    const cached = await this.cacheManager.getFeaturedArticles();
-    if (cached) {
-      return cached as ArticleQueryResult;
-    }
-
-    // 执行查询并缓存结果
-    const featuredOptions: ArticleQueryOptions = {
+    const queryOptions: ArticleQueryOptions = {
       ...options,
-      status: ArticleStatus.PUBLISHED, // 强制只返回已发布的文章
+      status: ArticleStatus.PUBLISHED,
       isFeatured: true,
       sortBy: 'updatedAt',
       sortOrder: 'DESC',
     };
-    const result = await this.executeQuery(featuredOptions);
-    await this.cacheManager.setFeaturedArticles(result);
 
-    return result;
+    return this.executeWithCache(
+      () =>
+        this.cacheManager.getFeaturedArticles() as Promise<ArticleQueryResult | null>,
+      (data) => this.cacheManager.setFeaturedArticles(data),
+      queryOptions,
+    );
   }
 
   /**
@@ -229,7 +213,9 @@ export class ArticleQueryService extends BaseService<Article> {
    */
   async searchArticles(
     keyword: string,
-    options: Omit<ArticleQueryOptions, 'keyword'> = {},
+    options: Omit<ArticleQueryOptions, 'keyword'> & {
+      searchMode?: ArticleSearchMode;
+    } = {},
   ): Promise<ArticleQueryResult> {
     const {
       page = 1,
@@ -245,14 +231,10 @@ export class ArticleQueryService extends BaseService<Article> {
     // 应用搜索条件（优化：使用全文搜索或更高效的LIKE查询）
     queryBuilder
       .where('article.status = :status', { status: 'published' })
-      .andWhere('article.isVisible = :isVisible', { isVisible: true })
-      .andWhere(
-        '(article.title LIKE :keyword OR article.content LIKE :keyword OR article.summary LIKE :keyword)',
-        { keyword: `%${keyword}%` },
-      );
+      .andWhere('article.isVisible = :isVisible', { isVisible: true });
 
-    // 应用其他过滤条件
-    this.applyFilters(queryBuilder, options);
+    // 应用所有过滤条件，包括关键词搜索
+    this.applyFilters(queryBuilder, { ...options, keyword });
 
     // 应用排序（搜索结果可以按相关性排序）
     if (sortBy === 'relevance') {
@@ -294,16 +276,15 @@ export class ArticleQueryService extends BaseService<Article> {
   ): Promise<ArticleQueryResult> {
     const skip = PaginationUtil.calculateSkip(page, limit);
 
-    const queryBuilder = this.createBaseQueryBuilder()
-      .where('article.status = :status', { status: 'published' })
-      .andWhere('article.isVisible = :isVisible', { isVisible: true });
+    const queryBuilder = this.createOptimizedQueryBuilder('list');
 
-    if (year) {
-      queryBuilder.andWhere('YEAR(article.updatedAt) = :year', { year });
-    }
-    if (month) {
-      queryBuilder.andWhere('MONTH(article.updatedAt) = :month', { month });
-    }
+    // 使用统一的过滤方法
+    this.applyFilters(queryBuilder, {
+      status: ArticleStatus.PUBLISHED,
+      isVisible: true,
+      year,
+      month,
+    });
 
     queryBuilder.orderBy('article.updatedAt', 'DESC').skip(skip).take(limit);
 
@@ -318,18 +299,22 @@ export class ArticleQueryService extends BaseService<Article> {
   async getArchiveStats(): Promise<
     { year: number; month: number; count: number }[]
   > {
-    const result = await this.articleRepository
-      .createQueryBuilder('article')
+    const queryBuilder = this.createOptimizedQueryBuilder('stats')
       .select('YEAR(article.publishedAt)', 'year')
       .addSelect('MONTH(article.publishedAt)', 'month')
       .addSelect('COUNT(article.id)', 'count')
-      .where('article.status = :status', { status: 'published' })
-      .andWhere('article.isVisible = :isVisible', { isVisible: true })
       .andWhere('article.publishedAt IS NOT NULL')
       .groupBy('year, month')
       .orderBy('year', 'DESC')
-      .addOrderBy('month', 'DESC')
-      .getRawMany();
+      .addOrderBy('month', 'DESC');
+
+    // 使用统一的过滤方法
+    this.applyFilters(queryBuilder, {
+      status: ArticleStatus.PUBLISHED,
+      isVisible: true,
+    });
+
+    const result = await queryBuilder.getRawMany();
 
     return result.map(
       (item: {
@@ -487,15 +472,23 @@ export class ArticleQueryService extends BaseService<Article> {
       includeTags?: boolean;
       includeAuthor?: boolean;
       includeStats?: boolean;
+      selectOnly?: string[];
     } = {},
   ): SelectQueryBuilder<Article> {
     const {
       includeCategory = true,
       includeTags = true,
       includeAuthor = true,
+      selectOnly,
     } = options;
 
     const queryBuilder = this.articleRepository.createQueryBuilder('article');
+
+    // 如果指定了selectOnly，只选择特定字段
+    if (selectOnly) {
+      queryBuilder.select(selectOnly);
+      return queryBuilder;
+    }
 
     // 条件性加载关联数据，避免不必要的JOIN
     if (includeCategory) {
@@ -514,6 +507,44 @@ export class ArticleQueryService extends BaseService<Article> {
   }
 
   /**
+   * 查询类型配置映射
+   */
+  private static readonly QUERY_TYPE_CONFIGS = {
+    list: {
+      includeCategory: true,
+      includeTags: true,
+      includeAuthor: true,
+      includeStats: true,
+    },
+    detail: {
+      includeCategory: true,
+      includeTags: true,
+      includeAuthor: true,
+      includeStats: true,
+    },
+    search: {
+      includeCategory: true,
+      includeTags: true,
+      includeAuthor: true,
+      includeStats: false,
+    },
+    stats: {
+      includeCategory: false,
+      includeTags: false,
+      includeAuthor: false,
+      includeStats: false,
+      selectOnly: [
+        'article.id',
+        'article.title',
+        'article.viewCount',
+        'article.likeCount',
+        'article.commentCount',
+        'article.createdAt',
+      ] as string[],
+    },
+  } as const;
+
+  /**
    * 创建优化的查询构建器，根据查询类型选择性加载关联数据
    */
   private createOptimizedQueryBuilder(
@@ -523,50 +554,16 @@ export class ArticleQueryService extends BaseService<Article> {
       includeCategory?: boolean;
     },
   ): SelectQueryBuilder<Article> {
-    switch (queryType) {
-      case 'list':
-        // 列表查询：始终包含标签和分类
-        return this.createBaseQueryBuilder({
-          includeCategory: overrides?.includeCategory ?? true,
-          includeTags: overrides?.includeTags ?? true,
-          includeAuthor: true,
-          includeStats: true,
-        });
+    const config = ArticleQueryService.QUERY_TYPE_CONFIGS[queryType];
 
-      case 'detail':
-        // 详情查询：加载所有关联数据
-        return this.createBaseQueryBuilder({
-          includeCategory: true,
-          includeTags: true,
-          includeAuthor: true,
-          includeStats: true,
-        });
+    // 应用覆盖配置
+    const finalConfig = {
+      ...config,
+      includeCategory: overrides?.includeCategory ?? config.includeCategory,
+      includeTags: overrides?.includeTags ?? config.includeTags,
+    };
 
-      case 'search':
-        // 搜索查询：始终包含标签和分类
-        return this.createBaseQueryBuilder({
-          includeCategory: overrides?.includeCategory ?? true,
-          includeTags: overrides?.includeTags ?? true,
-          includeAuthor: true,
-          includeStats: false,
-        });
-
-      case 'stats':
-        // 统计查询：只加载统计相关字段
-        return this.articleRepository
-          .createQueryBuilder('article')
-          .select([
-            'article.id',
-            'article.title',
-            'article.viewCount',
-            'article.likeCount',
-            'article.commentCount',
-            'article.createdAt',
-          ]);
-
-      default:
-        return this.createBaseQueryBuilder();
-    }
+    return this.createBaseQueryBuilder(finalConfig);
   }
 
   /**
@@ -589,13 +586,6 @@ export class ArticleQueryService extends BaseService<Article> {
       publishedAtStart,
       publishedAtEnd,
     } = filters;
-
-    // 调试日志：打印年月筛选参数
-    if (year || month) {
-      this.logger.log('年月筛选参数', {
-        metadata: { year, month, filters },
-      });
-    }
 
     if (status) {
       queryBuilder.andWhere('article.status = :status', { status });
@@ -646,10 +636,26 @@ export class ArticleQueryService extends BaseService<Article> {
     }
 
     if (keyword) {
-      queryBuilder.andWhere(
-        '(article.title LIKE :keyword OR article.content LIKE :keyword OR article.summary LIKE :keyword)',
-        { keyword: `%${keyword}%` },
-      );
+      // 根据搜索模式进行不同的搜索
+      if (filters.searchMode === ArticleSearchMode.TITLE) {
+        queryBuilder.andWhere('article.title LIKE :keyword', {
+          keyword: `%${keyword}%`,
+        });
+      } else if (filters.searchMode === ArticleSearchMode.SUMMARY) {
+        queryBuilder.andWhere('article.summary LIKE :keyword', {
+          keyword: `%${keyword}%`,
+        });
+      } else if (filters.searchMode === ArticleSearchMode.CONTENT) {
+        queryBuilder.andWhere('article.content LIKE :keyword', {
+          keyword: `%${keyword}%`,
+        });
+      } else {
+        // 默认混合搜索
+        queryBuilder.andWhere(
+          '(article.title LIKE :keyword OR article.content LIKE :keyword OR article.summary LIKE :keyword)',
+          { keyword: `%${keyword}%` },
+        );
+      }
     }
 
     // 添加年份和月份过滤

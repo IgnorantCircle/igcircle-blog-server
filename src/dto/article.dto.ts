@@ -245,7 +245,26 @@ export class CreateArticleDto extends BaseCreateDto {
  */
 export class UpdateArticleDto extends PartialType(CreateArticleDto) {}
 
+/**
+ * 搜索模式枚举
+ */
+export enum ArticleSearchMode {
+  TITLE = 'title',
+  SUMMARY = 'summary',
+  CONTENT = 'content',
+}
+
 export class ArticleQueryDto extends BaseQueryDto {
+  @ApiPropertyOptional({
+    description: '搜索模式',
+    enum: ArticleSearchMode,
+    example: ArticleSearchMode.TITLE,
+  })
+  @IsOptional()
+  @IsEnum(ArticleSearchMode, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('搜索模式'),
+  })
+  searchMode?: ArticleSearchMode;
   @ApiPropertyOptional({
     description: '标签ID列表',
     type: [String],
@@ -412,7 +431,21 @@ export class ArticleQueryDto extends BaseQueryDto {
   publishedAtEnd?: string;
 }
 
+/**
+ * 文章搜索DTO - 支持三种独立搜索模式
+ */
 export class ArticleSearchDto extends BaseQueryDto {
+  @ApiPropertyOptional({
+    description: '搜索模式',
+    enum: ArticleSearchMode,
+    example: ArticleSearchMode.TITLE,
+  })
+  @IsOptional()
+  @IsEnum(ArticleSearchMode, {
+    message: VALIDATION_MESSAGES.INVALID_ENUM('搜索模式'),
+  })
+  searchMode?: ArticleSearchMode;
+
   @ApiPropertyOptional({
     description: '标签ID列表',
     type: [String],
@@ -436,6 +469,7 @@ export class ArticleSearchDto extends BaseQueryDto {
     message: VALIDATION_MESSAGES.INVALID_UUID('分类ID'),
   })
   categoryId?: string;
+
   @ApiPropertyOptional({
     description: '文章状态',
     enum: ArticleStatus,
