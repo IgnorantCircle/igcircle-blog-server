@@ -14,6 +14,24 @@ import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { BlogCacheService } from '@/common/cache/blog-cache.service';
 
+interface JwtPayload {
+  sub: string;
+  jti: string;
+  [key: string]: unknown;
+}
+
+function isJwtPayload(decoded: unknown): decoded is JwtPayload {
+  return (
+    decoded !== null &&
+    typeof decoded === 'object' &&
+    decoded !== undefined &&
+    'sub' in decoded &&
+    'jti' in decoded &&
+    typeof (decoded as Record<string, unknown>).sub === 'string' &&
+    typeof (decoded as Record<string, unknown>).jti === 'string'
+  );
+}
+
 @Injectable()
 export class UserService extends BaseService<User> {
   constructor(
@@ -123,8 +141,18 @@ export class UserService extends BaseService<User> {
     if (!user) {
       throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
     }
-    user.status = status;
-    const updatedUser = await this.userRepository.save(user);
+
+    // 使用update方法而不是save方法，避免意外覆盖其他字段
+    await this.userRepository.update(id, {
+      status,
+      updatedAt: new Date(),
+    });
+
+    // 重新获取更新后的用户
+    const updatedUser = await this.userRepository.findOne({ where: { id } });
+    if (!updatedUser) {
+      throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
+    }
 
     return updatedUser;
   }
@@ -135,8 +163,16 @@ export class UserService extends BaseService<User> {
       throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
     }
 
-    user.role = role;
-    const updatedUser = await this.userRepository.save(user);
+    await this.userRepository.update(id, {
+      role,
+      updatedAt: new Date(),
+    });
+
+    // 重新获取更新后的用户
+    const updatedUser = await this.userRepository.findOne({ where: { id } });
+    if (!updatedUser) {
+      throw new NotFoundException(ErrorCode.USER_NOT_FOUND);
+    }
 
     return updatedUser;
   }
@@ -203,13 +239,8 @@ export class UserService extends BaseService<User> {
   async isTokenBlacklisted(token: string): Promise<boolean> {
     try {
       // 从token中提取用户ID和tokenId
-      const decoded = this.jwtService.decode(token);
-      if (
-        !decoded ||
-        typeof decoded !== 'object' ||
-        !decoded.sub ||
-        !decoded.jti
-      ) {
+      const decoded: unknown = this.jwtService.decode(token);
+      if (!isJwtPayload(decoded)) {
         this.logger.warn('无效的token格式', {
           action: 'check_token_blacklist',
           resource: 'token',
@@ -465,13 +496,8 @@ export class UserService extends BaseService<User> {
   async blacklistToken(token: string, expiresIn: number): Promise<void> {
     try {
       // 从token中提取用户ID和tokenId，然后清除该token
-      const decoded = this.jwtService.decode(token);
-      if (
-        decoded &&
-        typeof decoded === 'object' &&
-        decoded.sub &&
-        decoded.jti
-      ) {
+      const decoded: unknown = this.jwtService.decode(token);
+      if (isJwtPayload(decoded)) {
         const userId: string = decoded.sub;
         const tokenId: string = decoded.jti;
         await this.cacheService.clearUserToken(userId, tokenId);

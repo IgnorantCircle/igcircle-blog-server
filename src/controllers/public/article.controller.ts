@@ -60,12 +60,19 @@ export class PublicArticleController {
     description: '获取成功',
     type: [UnifiedArticleDto],
   })
-  async findPublished(@Query() query: ArticleQueryDto) {
+  async findPublished(
+    @Query() query: ArticleQueryDto,
+    @CurrentUser() user?: CurrentUserType,
+  ) {
     // 强制只返回已发布且可见的文章
     const publishedQuery = new ArticleQueryDto();
     Object.assign(publishedQuery, query);
     publishedQuery.status = ArticleStatus.PUBLISHED;
-    const result = await this.articleService.findAllPaginated(publishedQuery);
+    const result = await this.articleQueryService.findAllPaginated(
+      publishedQuery,
+      true,
+      user,
+    );
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
     return PaginationUtil.fromQueryResult(result, page, limit);
@@ -121,13 +128,19 @@ export class PublicArticleController {
     description: '搜索成功',
     type: [UnifiedArticleDto],
   })
-  async search(@Query() query: ArticleQueryDto) {
-    // 强制只返回已发布的文章
-    const searchQuery = new ArticleQueryDto();
-    Object.assign(searchQuery, query);
-    searchQuery.status = ArticleStatus.PUBLISHED;
-    const result = await this.articleService.findAllPaginated(searchQuery);
-
+  async search(
+    @Query() query: ArticleQueryDto,
+    @CurrentUser() user?: CurrentUserType,
+  ) {
+    const { keyword, ...options } = query;
+    if (!keyword) {
+      return { items: [], total: 0, page: 1, limit: 10 };
+    }
+    const result = await this.articleQueryService.searchArticles(
+      keyword,
+      options,
+      user,
+    );
     const page = Number(query.page) || 1;
     const limit = Number(query.limit) || 10;
     return PaginationUtil.fromQueryResult(result, page, limit);
@@ -136,13 +149,18 @@ export class PublicArticleController {
   @Get('archive')
   @ApiOperation({ summary: '获取文章归档' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  async getArchive(@Query() query: ArticleQueryDto): Promise<any> {
-    // 强制只返回已发布的文章
-    query.status = ArticleStatus.PUBLISHED;
-    const result = await this.articleService.findAllPaginated(query);
-
-    const page = Number(query.page) || 1;
-    const limit = Number(query.limit) || 10;
+  async getArchive(
+    @Query() query: ArticleQueryDto,
+    @CurrentUser() user?: CurrentUserType,
+  ): Promise<any> {
+    const { year, month, page = 1, limit = 10 } = query;
+    const result = await this.articleQueryService.getArchivedArticles(
+      year,
+      month,
+      page,
+      limit,
+      user,
+    );
     return PaginationUtil.fromQueryResult(result, page, limit);
   }
 
@@ -150,7 +168,7 @@ export class PublicArticleController {
   @ApiOperation({ summary: '获取文章统计信息（用户端）' })
   @ApiResponse({ status: 200, description: '获取成功' })
   async getStatistics() {
-    return this.articleStatisticsService.getPublicStatistics();
+    return await this.articleStatisticsService.getPublicStatistics();
   }
 
   @Get(':id')

@@ -103,7 +103,7 @@ export class ArticleImportService {
       this.logger.log(`开始执行导入任务 ${taskId}`, { metadata: { taskId } });
 
       // 更新状态为处理中
-      await this.importProgressService.markAsProcessing(taskId);
+      this.importProgressService.markAsProcessing(taskId);
 
       const result = await this.processImportTask(
         files,
@@ -125,10 +125,7 @@ export class ArticleImportService {
       );
 
       // 更新为完成状态
-      await this.importProgressService.markTaskCompleted(
-        taskId,
-        result.results,
-      );
+      this.importProgressService.markTaskCompleted(taskId, result.results);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
       this.logger.error(
@@ -138,7 +135,7 @@ export class ArticleImportService {
       );
 
       // 更新为失败状态
-      await this.importProgressService.markAsFailed(taskId, errorMessage);
+      this.importProgressService.markAsFailed(taskId, errorMessage);
     }
   }
 
@@ -204,7 +201,7 @@ export class ArticleImportService {
 
         // 更新当前处理的文件
         if (taskId) {
-          await this.importProgressService.updateCurrentFile(
+          this.importProgressService.updateCurrentFile(
             taskId,
             fileName,
             globalIndex,
@@ -247,7 +244,7 @@ export class ArticleImportService {
       // 更新整体进度
       if (taskId) {
         const processedCount = Math.min(i + batchSize, files.length);
-        await this.importProgressService.updateProgressAfterFile(
+        this.importProgressService.updateProgressAfterFile(
           taskId,
           processedCount,
           files.length,
@@ -550,12 +547,12 @@ export class ArticleImportService {
   /**
    * 获取导入统计信息
    */
-  async getImportStatistics(taskId: string): Promise<{
+  getImportStatistics(taskId: string): {
     totalFiles: number;
     processedFiles: number;
     successRate: number;
     averageProcessingTime: number;
-  } | null> {
+  } | null {
     return this.importProgressService.getImportStatistics(taskId);
   }
 

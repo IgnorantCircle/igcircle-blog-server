@@ -22,6 +22,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ArticleService } from '@/services/article/article.service';
+import { ArticleQueryService } from '@/services/article/article-query.service';
 import { ArticleStatisticsService } from '@/services/article/article-statistics.service';
 import { ArticleInteractionService } from '@/services/article/article-interaction.service';
 
@@ -74,6 +75,7 @@ type BatchExportResult =
 export class AdminArticleController {
   constructor(
     private readonly articleService: ArticleService,
+    private readonly articleQueryService: ArticleQueryService,
     private readonly articleStatisticsService: ArticleStatisticsService,
     private readonly articleInteractionService: ArticleInteractionService,
   ) {}
@@ -108,10 +110,15 @@ export class AdminArticleController {
   })
   async findAll(
     @Query() query: ArticleQueryDto,
+    @CurrentUser() user: CurrentUserType,
   ): Promise<PaginatedResponse<Article>> {
     const queryDto = new ArticleQueryDto();
     Object.assign(queryDto, query);
-    const result = await this.articleService.findAllPaginated(queryDto);
+    const result = await this.articleQueryService.findAllPaginated(
+      queryDto,
+      true,
+      user,
+    );
     return PaginationUtil.fromQueryResult(
       result,
       queryDto.page || 1,
@@ -129,10 +136,15 @@ export class AdminArticleController {
   })
   async findDrafts(
     @Query() query: ArticleQueryDto,
+    @CurrentUser() user: CurrentUserType,
   ): Promise<PaginatedResponse<Article>> {
     const draftQuery = new ArticleQueryDto();
     Object.assign(draftQuery, query, { status: ArticleStatus.DRAFT });
-    const result = await this.articleService.findAllPaginated(draftQuery);
+    const result = await this.articleQueryService.findAllPaginated(
+      draftQuery,
+      true,
+      user,
+    );
     return PaginationUtil.fromQueryResult(
       result,
       draftQuery.page || 1,
@@ -150,10 +162,15 @@ export class AdminArticleController {
   })
   async findPublished(
     @Query() query: ArticleQueryDto,
+    @CurrentUser() user: CurrentUserType,
   ): Promise<PaginatedResponse<Article>> {
     const publishedQuery = new ArticleQueryDto();
     Object.assign(publishedQuery, query, { status: ArticleStatus.PUBLISHED });
-    const result = await this.articleService.findAllPaginated(publishedQuery);
+    const result = await this.articleQueryService.findAllPaginated(
+      publishedQuery,
+      true,
+      user,
+    );
     return PaginationUtil.fromQueryResult(
       result,
       publishedQuery.page || 1,
@@ -171,10 +188,15 @@ export class AdminArticleController {
   })
   async findArchived(
     @Query() query: ArticleQueryDto,
+    @CurrentUser() user: CurrentUserType,
   ): Promise<PaginatedResponse<Article>> {
     const archivedQuery = new ArticleQueryDto();
     Object.assign(archivedQuery, query, { status: ArticleStatus.ARCHIVED });
-    const result = await this.articleService.findAllPaginated(archivedQuery);
+    const result = await this.articleQueryService.findAllPaginated(
+      archivedQuery,
+      true,
+      user,
+    );
     return PaginationUtil.fromQueryResult(
       result,
       archivedQuery.page || 1,

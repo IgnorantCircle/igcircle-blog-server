@@ -124,7 +124,7 @@ export class AuthController {
     const accessToken = this.jwtService.sign(payload);
 
     // 将token存储到缓存中
-    const decoded = this.jwtService.decode(accessToken) as JwtPayload;
+    const decoded = this.jwtService.decode(accessToken);
     if (
       decoded &&
       typeof decoded === 'object' &&
@@ -222,7 +222,7 @@ export class AuthController {
     const accessToken = this.jwtService.sign(payload);
 
     // 将token存储到缓存中
-    const decoded = this.jwtService.decode(accessToken) as JwtPayload;
+    const decoded = this.jwtService.decode(accessToken);
     if (
       decoded &&
       typeof decoded === 'object' &&
@@ -365,7 +365,7 @@ export class AuthController {
     const token = this.extractTokenFromHeader(req);
     if (token) {
       try {
-        const decoded = this.jwtService.decode(token) as JwtPayload;
+        const decoded = this.jwtService.decode(token);
         if (
           decoded &&
           typeof decoded === 'object' &&

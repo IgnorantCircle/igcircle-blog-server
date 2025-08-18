@@ -20,6 +20,13 @@ export interface ArticleQueryResult {
   total: number;
 }
 
+export interface CurrentUser {
+  sub: string;
+  username: string;
+  email: string;
+  role: string;
+}
+
 @Injectable()
 export class ArticleQueryService extends BaseService<Article> {
   constructor(
@@ -39,6 +46,7 @@ export class ArticleQueryService extends BaseService<Article> {
   async findAllPaginated(
     options: ArticleQueryOptions,
     useCache: boolean = true,
+    currentUser?: CurrentUser,
   ): Promise<ArticleQueryResult> {
     const { page = 1, limit = 10 } = options;
 
@@ -50,7 +58,7 @@ export class ArticleQueryService extends BaseService<Article> {
     // 对于管理员查询（包含非已发布状态的文章），不使用缓存
     // 因为管理员可以看到所有状态的文章，缓存会导致数据不一致
     if (!options.status || options.status !== ArticleStatus.PUBLISHED) {
-      return this.executeQuery(options);
+      return this.executeQuery(options, currentUser);
     }
 
     // 对于有特殊过滤条件的查询，不使用缓存
@@ -63,7 +71,7 @@ export class ArticleQueryService extends BaseService<Article> {
       options.year ||
       options.month
     ) {
-      return this.executeQuery(options);
+      return this.executeQuery(options, currentUser);
     }
 
     // 只对简单的已发布文章列表查询使用缓存
@@ -73,7 +81,7 @@ export class ArticleQueryService extends BaseService<Article> {
     }
 
     // 执行查询并缓存结果
-    const result = await this.executeQuery(options);
+    const result = await this.executeQuery(options, currentUser);
     await this.cacheManager.setArticleList(result, page, limit);
 
     return result;
@@ -84,6 +92,7 @@ export class ArticleQueryService extends BaseService<Article> {
    */
   private async executeQuery(
     options: ArticleQueryOptions,
+    currentUser?: CurrentUser,
   ): Promise<ArticleQueryResult> {
     const {
       page = 1,
@@ -99,7 +108,9 @@ export class ArticleQueryService extends BaseService<Article> {
     const queryBuilder = this.createOptimizedQueryBuilder('list');
 
     // 应用过滤条件
-    this.applyFilters(queryBuilder, options);
+    // 判断是否为管理员查询：根据用户角色判断
+    const isAdminQuery = currentUser?.role === 'admin';
+    this.applyFilters(queryBuilder, options, isAdminQuery);
 
     // 应用排序
     queryBuilder.orderBy(`article.${sortBy}`, sortOrder);
@@ -216,6 +227,7 @@ export class ArticleQueryService extends BaseService<Article> {
     options: Omit<ArticleQueryOptions, 'keyword'> & {
       searchMode?: ArticleSearchMode;
     } = {},
+    currentUser?: CurrentUser,
   ): Promise<ArticleQueryResult> {
     const {
       page = 1,
@@ -234,7 +246,9 @@ export class ArticleQueryService extends BaseService<Article> {
       .andWhere('article.isVisible = :isVisible', { isVisible: true });
 
     // 应用所有过滤条件，包括关键词搜索
-    this.applyFilters(queryBuilder, { ...options, keyword });
+    // 搜索接口强制只返回已发布文章，所以这是用户端查询
+    const isAdminQuery = currentUser?.role === 'admin';
+    this.applyFilters(queryBuilder, { ...options, keyword }, isAdminQuery);
 
     // 应用排序（搜索结果可以按相关性排序）
     if (sortBy === 'relevance') {
@@ -273,18 +287,25 @@ export class ArticleQueryService extends BaseService<Article> {
     month?: number,
     page: number = 1,
     limit: number = 10,
+    currentUser?: CurrentUser,
   ): Promise<ArticleQueryResult> {
     const skip = PaginationUtil.calculateSkip(page, limit);
 
     const queryBuilder = this.createOptimizedQueryBuilder('list');
 
     // 使用统一的过滤方法
-    this.applyFilters(queryBuilder, {
-      status: ArticleStatus.PUBLISHED,
-      isVisible: true,
-      year,
-      month,
-    });
+    // 归档接口强制只返回已发布文章，所以这是用户端查询
+    const isAdminQuery = currentUser?.role === 'admin';
+    this.applyFilters(
+      queryBuilder,
+      {
+        status: ArticleStatus.PUBLISHED,
+        isVisible: true,
+        year,
+        month,
+      },
+      isAdminQuery,
+    );
 
     queryBuilder.orderBy('article.updatedAt', 'DESC').skip(skip).take(limit);
 
@@ -296,9 +317,9 @@ export class ArticleQueryService extends BaseService<Article> {
   /**
    * 获取归档统计数据
    */
-  async getArchiveStats(): Promise<
-    { year: number; month: number; count: number }[]
-  > {
+  async getArchiveStats(
+    currentUser?: CurrentUser,
+  ): Promise<{ year: number; month: number; count: number }[]> {
     const queryBuilder = this.createOptimizedQueryBuilder('stats')
       .select('YEAR(article.publishedAt)', 'year')
       .addSelect('MONTH(article.publishedAt)', 'month')
@@ -309,10 +330,16 @@ export class ArticleQueryService extends BaseService<Article> {
       .addOrderBy('month', 'DESC');
 
     // 使用统一的过滤方法
-    this.applyFilters(queryBuilder, {
-      status: ArticleStatus.PUBLISHED,
-      isVisible: true,
-    });
+    // 归档统计接口强制只返回已发布文章，所以这是用户端查询
+    const isAdminQuery = currentUser?.role === 'admin';
+    this.applyFilters(
+      queryBuilder,
+      {
+        status: ArticleStatus.PUBLISHED,
+        isVisible: true,
+      },
+      isAdminQuery,
+    );
 
     const result = await queryBuilder.getRawMany();
 
@@ -403,7 +430,7 @@ export class ArticleQueryService extends BaseService<Article> {
       );
       conditions.push(
         `EXISTS (
-          SELECT 1 FROM article_tags_tag att 
+          SELECT 1 FROM article_tags att 
           WHERE att.articleId = article.id 
           AND att.tagId IN (:...tagIds)
         )`,
@@ -572,6 +599,7 @@ export class ArticleQueryService extends BaseService<Article> {
   private applyFilters(
     queryBuilder: SelectQueryBuilder<Article>,
     filters: Partial<ArticleQueryOptions>,
+    isAdminQuery: boolean = false,
   ): void {
     const {
       status,
@@ -676,6 +704,55 @@ export class ArticleQueryService extends BaseService<Article> {
       queryBuilder.andWhere('article.publishedAt <= :publishedAtEnd', {
         publishedAtEnd,
       });
+    }
+
+    // 对于非管理员查询，需要确保关联的分类和标签都是活跃状态
+    if (!isAdminQuery) {
+      // 检查分类是否活跃（如果文章有分类）
+      const categoryJoinAlias = queryBuilder.expressionMap.joinAttributes.find(
+        (join) => join.alias.name === 'category',
+      );
+      const categorySelectAlias = queryBuilder.expressionMap.selects.find(
+        (select) => select.aliasName === 'category',
+      );
+
+      if (categoryJoinAlias || categorySelectAlias) {
+        // 如果已经join了category表，直接添加条件
+        queryBuilder.andWhere(
+          '(article.categoryId IS NULL OR category.isActive = :categoryIsActive)',
+          { categoryIsActive: true },
+        );
+      } else {
+        // 如果没有join category表，需要添加join
+        queryBuilder.leftJoin('article.category', 'category');
+        queryBuilder.andWhere(
+          '(article.categoryId IS NULL OR category.isActive = :categoryIsActive)',
+          { categoryIsActive: true },
+        );
+      }
+
+      // 检查标签是否活跃（如果文章有标签）
+      const tagJoinAlias = queryBuilder.expressionMap.joinAttributes.find(
+        (join) => join.alias.name === 'tags',
+      );
+      const tagSelectAlias = queryBuilder.expressionMap.selects.find(
+        (select) => select.aliasName === 'tags',
+      );
+
+      if (tagJoinAlias || tagSelectAlias) {
+        // 如果已经join了tags表，直接添加条件
+        queryBuilder.andWhere(
+          '(NOT EXISTS (SELECT 1 FROM article_tags att WHERE att.articleId = article.id) OR tags.isActive = :tagIsActive)',
+          { tagIsActive: true },
+        );
+      } else {
+        // 如果没有join tags表，需要添加join
+        queryBuilder.leftJoin('article.tags', 'tags');
+        queryBuilder.andWhere(
+          '(NOT EXISTS (SELECT 1 FROM article_tags att WHERE att.articleId = article.id) OR tags.isActive = :tagIsActive)',
+          { tagIsActive: true },
+        );
+      }
     }
   }
 }
