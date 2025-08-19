@@ -361,23 +361,61 @@ export class TagService extends BaseService<Tag> {
       return [];
     }
 
+    // 先查找已存在的标签
     const existingTags = await this.findByNames(tagNames);
     const existingTagNames = existingTags.map((tag) => tag.name);
     const newTagNames = tagNames.filter(
       (name) => !existingTagNames.includes(name),
     );
 
-    const newTags: Tag[] = [];
-    for (const name of newTagNames) {
-      const tag = this.tagRepository.create({
-        name,
-        slug: SlugUtil.forTag(name),
-        isActive: true,
-      });
-      const savedTag = await this.tagRepository.save(tag);
-      newTags.push(savedTag);
+    // 如果没有新标签需要创建，直接返回已存在的标签
+    if (newTagNames.length === 0) {
+      return existingTags;
     }
 
+    // 使用事务处理新标签的创建，避免并发问题
+    const newTags = await this.tagRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        const createdTags: Tag[] = [];
+
+        // 再次检查数据库中是否已存在这些标签（事务内查询）
+        // 这是为了处理并发情况下，其他请求可能已经创建了这些标签
+        const existingInTransaction = await transactionalEntityManager.find(
+          Tag,
+          {
+            where: { name: In(newTagNames) },
+          },
+        );
+
+        const existingNamesInTransaction = existingInTransaction.map(
+          (tag) => tag.name,
+        );
+        const tagsToCreate = newTagNames.filter(
+          (name) => !existingNamesInTransaction.includes(name),
+        );
+
+        // 将已存在的标签添加到结果中
+        createdTags.push(...existingInTransaction);
+
+        // 批量创建剩余的新标签
+        if (tagsToCreate.length > 0) {
+          const tagEntities = tagsToCreate.map((name) => {
+            return transactionalEntityManager.create(Tag, {
+              name,
+              slug: SlugUtil.forTag(name),
+              isActive: true,
+            });
+          });
+
+          const savedTags = await transactionalEntityManager.save(tagEntities);
+          createdTags.push(...savedTags);
+        }
+
+        return createdTags;
+      },
+    );
+
+    // 合并已存在的标签和新创建的标签
     return [...existingTags, ...newTags];
   }
 

@@ -229,6 +229,29 @@ export class BlogCacheService {
   }
 
   /**
+   * 清除标签缓存（标签变更时调用）
+   */
+  async clearTagCache(): Promise<void> {
+    try {
+      await this.del(BlogCacheService.KEYS.ALL_TAGS);
+      this.logger.debug('标签缓存已清除');
+    } catch (error) {
+      this.logger.error('清除标签缓存失败', error);
+    }
+  }
+
+  /**
+   * 清除分类缓存（分类变更时调用）
+   */
+  async clearCategoryCache(): Promise<void> {
+    try {
+      await this.del(BlogCacheService.KEYS.ALL_CATEGORIES);
+      this.logger.debug('分类缓存已清除');
+    } catch (error) {
+      this.logger.error('清除分类缓存失败', error);
+    }
+  }
+  /**
    * 清除文章相关缓存（发布、更新、删除文章时调用）
    * @param slug 文章slug，如果提供则只清除该文章的详情缓存
    * @param operationType 操作类型，必须指定以确保精确的缓存清除策略
@@ -242,13 +265,20 @@ export class BlogCacheService {
       | 'feature'
       | 'top'
       | 'publish'
+      | 'import'
       | 'archive' = 'update',
   ): Promise<void> {
     try {
       const clearPromises: Promise<void>[] = [];
-
+      //清空标签和分类缓存，因为文章操作会关联标签和分类
+      clearPromises.push(this.clearCategoryCache());
+      clearPromises.push(this.clearTagCache());
       // 根据操作类型智能清除缓存
       switch (operationType) {
+        case 'import':
+          clearPromises.push(this.clearSpecialArticleListsCache());
+          clearPromises.push(this.clearArticleListCache());
+          break;
         case 'create':
         case 'publish':
           // 新文章发布：清除列表和最新文章缓存
@@ -342,30 +372,6 @@ export class BlogCacheService {
     ];
 
     await Promise.all(clearPromises);
-  }
-
-  /**
-   * 清除标签缓存（标签变更时调用）
-   */
-  async clearTagCache(): Promise<void> {
-    try {
-      await this.del(BlogCacheService.KEYS.ALL_TAGS);
-      this.logger.debug('标签缓存已清除');
-    } catch (error) {
-      this.logger.error('清除标签缓存失败', error);
-    }
-  }
-
-  /**
-   * 清除分类缓存（分类变更时调用）
-   */
-  async clearCategoryCache(): Promise<void> {
-    try {
-      await this.del(BlogCacheService.KEYS.ALL_CATEGORIES);
-      this.logger.debug('分类缓存已清除');
-    } catch (error) {
-      this.logger.error('清除分类缓存失败', error);
-    }
   }
 
   /**

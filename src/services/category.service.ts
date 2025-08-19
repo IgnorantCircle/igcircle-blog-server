@@ -371,18 +371,34 @@ export class CategoryService extends BaseService<Category> {
       return existingCategory;
     }
 
-    // 如果不存在，创建新分类
-    const slug = SlugUtil.forCategory(name);
-    const category = this.categoryRepository.create({
-      name,
-      slug,
-      description: '',
-      isActive: true,
-      articleCount: 0,
-    });
+    // 使用事务处理新分类的创建，避免并发问题
+    return await this.categoryRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        // 在事务内再次检查是否存在，避免并发创建
+        const existingInTransaction = await transactionalEntityManager.findOne(
+          Category,
+          {
+            where: { name },
+          },
+        );
 
-    const savedCategory = await this.categoryRepository.save(category);
-    return savedCategory;
+        if (existingInTransaction) {
+          return existingInTransaction;
+        }
+
+        // 如果不存在，创建新分类
+        const slug = SlugUtil.forCategory(name);
+        const category = transactionalEntityManager.create(Category, {
+          name,
+          slug,
+          description: '',
+          isActive: true,
+          articleCount: 0,
+        });
+
+        return await transactionalEntityManager.save(category);
+      },
+    );
   }
 
   private async isDescendant(

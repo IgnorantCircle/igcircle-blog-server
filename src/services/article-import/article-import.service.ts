@@ -16,6 +16,7 @@ import { StructuredLoggerService } from '@/common/logger/structured-logger.servi
 import { ArticleParserService } from './article-parser.service';
 import { ImportProgressService } from './import-progress.service';
 import { ImportValidationService } from './import-validation.service';
+import { BlogCacheService } from '@/common/cache/blog-cache.service';
 
 @Injectable()
 export class ArticleImportService {
@@ -27,6 +28,7 @@ export class ArticleImportService {
     private readonly articleParserService: ArticleParserService,
     private readonly importProgressService: ImportProgressService,
     private readonly importValidationService: ImportValidationService,
+    private readonly blogCacheService: BlogCacheService,
   ) {}
 
   /**
@@ -153,6 +155,9 @@ export class ArticleImportService {
     // 处理文件
     const { results, successCount, failureCount, skippedCount } =
       await this.processFiles(files, authorId, config, taskId, startTime);
+
+    // 清除相关缓存，确保用户端能看到最新数据
+    await this.clearCachesAfterImport();
 
     const endTime = Date.now();
 
@@ -561,5 +566,26 @@ export class ArticleImportService {
    */
   cancelImportTask(taskId: string): boolean {
     return this.importProgressService.cancelImportTask(taskId);
+  }
+
+  /**
+   * 清除导入文章后的相关缓存
+   * 确保用户端能看到最新的文章数据
+   */
+  private async clearCachesAfterImport(): Promise<void> {
+    try {
+      // 使用clearArticleCache方法清除所有相关缓存
+      await this.blogCacheService.clearArticleCache(undefined, 'import');
+
+      this.logger.log('导入文章后成功清除相关缓存');
+    } catch (error) {
+      // 缓存清除失败不应该影响主要业务逻辑
+      this.logger.error('导入文章后清除缓存失败', undefined, {
+        action: 'clear_cache_after_import_failed',
+        metadata: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
   }
 }
