@@ -333,12 +333,18 @@ export class TagService extends BaseService<Tag> {
   }
 
   async updateArticleCount(tagId: string): Promise<void> {
-    const count = await this.tagRepository
-      .createQueryBuilder('tag')
-      .leftJoin('tag.articles', 'article')
-      .where('tag.id = :tagId', { tagId })
-      .andWhere('article.status = :status', { status: ArticleStatus.PUBLISHED })
-      .getCount();
+    // 直接查询article_tags中间表来获取准确的文章数量
+    const count = await this.tagRepository.manager
+      .createQueryBuilder()
+      .select('COUNT(DISTINCT a.id)', 'count')
+      .from('articles', 'a') //  'a' 定义为 'articles' 表的别名
+      .innerJoin('article_tags', 'at', 'a.id = at.articleId')
+      .where('at.tagId = :tagId', { tagId })
+      .andWhere('a.status = :status', { status: ArticleStatus.PUBLISHED })
+      .andWhere('a.deletedAt IS NULL')
+      .andWhere('a.isVisible = true')
+      .getRawOne()
+      .then((result) => parseInt((result as { count: string }).count) || 0);
 
     await this.tagRepository.update(tagId, { articleCount: count });
   }
