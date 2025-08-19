@@ -112,6 +112,13 @@ export class AuthController {
       );
     }
 
+    // 检查用户角色
+    if (user.role !== 'user') {
+      throw new ValidationException('用户名或密码错误', [
+        { field: 'username', message: '用户名或密码错误' },
+      ]);
+    }
+
     // 生成JWT token
     const tokenId = uuidv4();
     const payload = {
