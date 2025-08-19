@@ -179,18 +179,72 @@ class SecurityConfig {
   enableHelmet?: boolean = true;
 }
 
+class HttpRequestLoggingConfig {
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsOptional()
+  enabled?: boolean = true;
+
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsOptional()
+  logSlowRequests?: boolean = true;
+
+  @IsNumber()
+  @Min(100)
+  @Max(10000)
+  @Transform(({ value }) => parseInt(value, 10))
+  @IsOptional()
+  slowRequestThreshold?: number = 1000; // 慢请求阈值（毫秒）
+
+  @IsOptional()
+  skipPaths?: string[] = [];
+
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsOptional()
+  enableRequestFile?: boolean = false;
+
+  @IsString()
+  @IsOptional()
+  requestFilePath?: string = './logs/http-requests.log';
+
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsOptional()
+  enableResponseFile?: boolean = false;
+
+  @IsString()
+  @IsOptional()
+  responseFilePath?: string = './logs/http-responses.log';
+
+  @IsNumber()
+  @Min(1)
+  @Max(365)
+  @Transform(({ value }) => parseInt(value, 10))
+  @IsOptional()
+  maxFiles?: number = 14;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d+[kmg]b?$/i, {
+    message: 'Max file size must be in format like "10mb", "1gb"',
+  })
+  maxFileSize?: string = '20mb';
+}
+
 class LoggingConfig {
   @IsEnum(LogLevel)
   @IsOptional()
   level?: LogLevel = LogLevel.Info;
 
   @IsBoolean()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsOptional()
   enableConsole?: boolean = true;
 
   @IsBoolean()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsOptional()
   enableFile?: boolean = false;
 
@@ -211,6 +265,17 @@ class LoggingConfig {
     message: 'Max file size must be in format like "10mb", "1gb"',
   })
   maxFileSize?: string = '20mb';
+
+  @IsNumber()
+  @Min(1)
+  @Max(365)
+  @Transform(({ value }) => parseInt(value, 10))
+  @IsOptional()
+  maxLogDays?: number = 30; // 日志保留天数，默认30天
+
+  @Type(() => HttpRequestLoggingConfig)
+  @IsOptional()
+  httpRequestLogging?: HttpRequestLoggingConfig;
 }
 
 export class EnvironmentVariables {
@@ -350,10 +415,31 @@ export function validateConfig(
     logging: {
       level: config.LOG_LEVEL || 'info',
       enableConsole: config.LOG_ENABLE_CONSOLE !== 'false',
-      enableFile: config.LOG_ENABLE_FILE === 'true',
+      enableFile:
+        config.LOG_ENABLE_FILE === 'true' || config.LOG_ENABLE_FILE === true,
       filePath: config.LOG_FILE_PATH || './logs',
       maxFiles: config.LOG_MAX_FILES || 14,
       maxFileSize: config.LOG_MAX_FILE_SIZE || '20mb',
+      httpRequestLogging: {
+        enabled: config.HTTP_REQUEST_LOGGING_ENABLED !== 'false',
+        logSlowRequests: config.HTTP_REQUEST_LOG_SLOW_REQUESTS !== 'false',
+        slowRequestThreshold: config.HTTP_REQUEST_SLOW_THRESHOLD
+          ? parseInt(config.HTTP_REQUEST_SLOW_THRESHOLD as string, 10)
+          : 1000,
+        skipPaths: config.HTTP_REQUEST_SKIP_PATHS
+          ? (config.HTTP_REQUEST_SKIP_PATHS as string).split(',')
+          : [],
+        enableRequestFile: config.LOG_ENABLE_HTTP_REQUEST_FILE === 'true',
+        requestFilePath:
+          config.LOG_HTTP_REQUEST_FILE_PATH || './logs/http-requests.log',
+        enableResponseFile: config.LOG_ENABLE_HTTP_RESPONSE_FILE === 'true',
+        responseFilePath:
+          config.LOG_HTTP_RESPONSE_FILE_PATH || './logs/http-responses.log',
+        maxFiles: config.LOG_HTTP_MAX_FILES
+          ? parseInt(config.LOG_HTTP_MAX_FILES as string, 10)
+          : 14,
+        maxFileSize: config.LOG_HTTP_MAX_FILE_SIZE || '20mb',
+      },
     },
   };
 

@@ -46,18 +46,6 @@ export class RateLimitMiddleware implements NestMiddleware {
     // 根据路由选择不同的限制策略
     // 使用 req.url 而不是 req.path 来获取完整路径
     const options = this.getOptionsForRoute(fullPath);
-
-    // 添加调试日志
-    this.logger.debug('限流中间件执行', {
-      action: 'rate_limit_middleware_execute',
-      metadata: {
-        ip,
-        path: req.path,
-        key,
-        options,
-      },
-    });
-
     try {
       // 使用缓存获取当前计数
       const now = Date.now();
@@ -236,7 +224,6 @@ export class RateLimitMiddleware implements NestMiddleware {
     try {
       await this.cache.set(cacheKey, record, ttlMs);
     } catch (error) {
-      // console.log('缓存设置错误:', error);
       this.logger.error(
         '设置限流记录失败',
         error instanceof Error ? error.stack : undefined,

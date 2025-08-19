@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DevCacheController } from '@/controllers/dev-cache.controller';
+import { DevLogController } from '@/controllers/dev-log.controller';
 import { DevCacheService } from '@/services/dev-cache.service';
 import { CommonModule } from '@/common/common.module';
 
@@ -9,7 +10,7 @@ import { CommonModule } from '@/common/common.module';
  */
 @Module({
   imports: [CommonModule],
-  controllers: [DevCacheController],
+  controllers: [DevCacheController, DevLogController],
   providers: [DevCacheService],
   exports: [DevCacheService],
 })

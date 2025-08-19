@@ -10,6 +10,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = await app.resolve(StructuredLoggerService);
   logger.setContext({ module: 'Bootstrap' });
+
+  // 设置全局日志器
+  app.useLogger(logger);
+
   const configService = app.get(ConfigService);
   // 启用CORS
   const corsOrigins: (string | RegExp)[] =

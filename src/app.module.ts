@@ -21,6 +21,7 @@ import { ResponseInterceptor } from '@/common/interceptors/response.interceptor'
 import { SharedAuthModule } from '@/modules/shared-auth.module';
 import { JwtAuthGuard } from '@/guards/auth.guard';
 import { RateLimitMiddleware } from '@/common/middleware/rate-limit.middleware';
+import { HttpRequestLoggerMiddleware } from '@/common/middleware/http-request-logger.middleware';
 import { DevModule } from '@/modules/dev.module';
 
 @Module({
@@ -28,7 +29,7 @@ import { DevModule } from '@/modules/dev.module';
     // 配置模块（带验证）
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.development.local', '.env'],
+      envFilePath: ['.env.development.local'],
       load: [configFactory],
       validate: configFactory,
     }),
@@ -85,5 +86,6 @@ import { DevModule } from '@/modules/dev.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RateLimitMiddleware).forRoutes('*'); // 对所有路由应用限流中间件
+    consumer.apply(HttpRequestLoggerMiddleware).forRoutes('*'); // 对所有路由应用HTTP请求日志中间件
   }
 }

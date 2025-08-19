@@ -8,6 +8,7 @@ import { UserService } from '@/services/user.service';
 import { User } from '@/entities/user.entity';
 import { UnauthorizedException } from '@/common/exceptions/business.exception';
 import { ErrorCode } from '@/common/constants/error-codes';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 
 interface JwtPayload {
   sub: string;
@@ -22,12 +23,18 @@ type RequestWithUser = Request & { user?: User & JwtPayload };
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly logger: StructuredLoggerService;
+
   constructor(
     private jwtService: JwtService,
     private reflector: Reflector,
     private configService: ConfigService,
     private userService: UserService,
-  ) {}
+    logger: StructuredLoggerService,
+  ) {
+    this.logger = logger;
+    this.logger.setContext({ module: 'JwtAuthGuard' });
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -59,7 +66,12 @@ export class JwtAuthGuard implements CanActivate {
         }
       } catch (error) {
         // 黑名单检查失败时记录日志但不阻止认证
-        console.warn('Token blacklist check failed:', error);
+        this.logger.warn('Token黑名单检查失败', {
+          action: 'token_blacklist_check_failed',
+          metadata: {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
         // 如果是UnauthorizedException，则重新抛出
         if (error instanceof UnauthorizedException) {
           throw error;
@@ -79,7 +91,13 @@ export class JwtAuthGuard implements CanActivate {
           }
         } catch (error) {
           // 强制退出检查失败时记录日志但不阻止认证
-          console.warn('Force logout check failed:', error);
+          this.logger.warn('强制退出检查失败', {
+            action: 'force_logout_check_failed',
+            metadata: {
+              userId: payload.sub,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
         }
       }
 
@@ -88,7 +106,13 @@ export class JwtAuthGuard implements CanActivate {
         await this.userService.updateUserLastActive(payload.sub);
       } catch (error) {
         // 更新活跃时间失败时记录日志但不阻止认证
-        console.warn('Update last active failed:', error);
+        this.logger.warn('更新用户最后活跃时间失败', {
+          action: 'update_last_active_failed',
+          metadata: {
+            userId: payload.sub,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
       }
 
       // 获取用户信息并附加到请求对象

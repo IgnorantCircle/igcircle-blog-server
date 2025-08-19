@@ -4,9 +4,12 @@ import { Repository, IsNull } from 'typeorm';
 import { ArticleView } from '@/entities/article-view.entity';
 import { Article } from '@/entities/article.entity';
 import { BlogCacheService } from '@/common/cache/blog-cache.service';
+import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 
 @Injectable()
 export class ArticleViewService {
+  private readonly logger: StructuredLoggerService;
+
   constructor(
     @InjectRepository(ArticleView)
     private readonly articleViewRepository: Repository<ArticleView>,
@@ -14,7 +17,11 @@ export class ArticleViewService {
     private readonly articleRepository: Repository<Article>,
     @Inject(BlogCacheService)
     private readonly blogCacheService: BlogCacheService,
-  ) {}
+    logger: StructuredLoggerService,
+  ) {
+    this.logger = logger;
+    this.logger.setContext({ module: 'ArticleViewService' });
+  }
 
   /**
    * 记录文章浏览，避免重复计数
@@ -131,7 +138,13 @@ export class ArticleViewService {
       await this.blogCacheService.clearPopularArticlesCache();
     } catch (error) {
       // 缓存清除失败不应该影响主要业务逻辑
-      console.error('清除缓存失败:', error);
+      this.logger.error('清除文章浏览相关缓存失败', undefined, {
+        action: 'clear_article_view_cache_failed',
+        metadata: {
+          articleId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 
