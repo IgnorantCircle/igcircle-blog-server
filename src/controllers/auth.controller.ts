@@ -265,10 +265,22 @@ export class AuthController {
     type: VerificationCodeResponseDto,
   })
   @ApiResponse({ status: 400, description: '请求参数错误或发送频率过高' })
+  @ApiResponse({ status: 409, description: '邮箱已被注册' })
   async sendVerificationCode(
     @Body() sendCodeDto: SendVerificationCodeDto,
   ): Promise<VerificationCodeResponseDto> {
     try {
+      // 先检查邮箱是否已被注册
+      const existingUser = await this.userService.findByEmail(
+        sendCodeDto.email,
+      );
+      if (existingUser) {
+        throw new BusinessException(
+          ErrorCode.USER_ALREADY_EXISTS,
+          '该邮箱已被注册，请使用其他邮箱或直接登录',
+        );
+      }
+
       await this.emailService.sendVerificationCode(sendCodeDto.email);
       return {
         success: true,
