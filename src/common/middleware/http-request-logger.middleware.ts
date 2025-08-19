@@ -17,9 +17,10 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
   }
 
   use(req: Request, res: Response, next: NextFunction): void {
-    // 添加调试日志
-    this.logger.log(
-      `[HttpRequestLoggerMiddleware] Processing request: ${req.method} ${req.path}`,
+    // 检查是否启用控制台日志
+    const enableConsole = this.configService.get<boolean>(
+      'logging.enableConsole',
+      true,
     );
 
     // 检查HTTP日志文件配置
@@ -31,20 +32,29 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
       'logging.httpRequestLogging.enableResponseFile',
       false,
     );
-    this.logger.log(
-      `[HttpRequestLoggerMiddleware] HTTP Request File Enabled: ${enableHttpRequestFile}`,
-    );
-    this.logger.log(
-      `[HttpRequestLoggerMiddleware] HTTP Response File Enabled: ${enableHttpResponseFile}`,
-    );
 
-    // 检查原始环境变量
-    this.logger.log(
-      `[HttpRequestLoggerMiddleware] LOG_ENABLE_HTTP_REQUEST_FILE: ${process.env.LOG_ENABLE_HTTP_REQUEST_FILE}`,
-    );
-    this.logger.log(
-      `[HttpRequestLoggerMiddleware] LOG_ENABLE_HTTP_RESPONSE_FILE: ${process.env.LOG_ENABLE_HTTP_RESPONSE_FILE}`,
-    );
+    // 只有在启用控制台日志时才输出调试信息
+    if (enableConsole) {
+      // 添加调试日志
+      this.logger.log(
+        `[HttpRequestLoggerMiddleware] Processing request: ${req.method} ${req.path}`,
+      );
+
+      this.logger.log(
+        `[HttpRequestLoggerMiddleware] HTTP Request File Enabled: ${enableHttpRequestFile}`,
+      );
+      this.logger.log(
+        `[HttpRequestLoggerMiddleware] HTTP Response File Enabled: ${enableHttpResponseFile}`,
+      );
+
+      // 检查原始环境变量
+      this.logger.log(
+        `[HttpRequestLoggerMiddleware] LOG_ENABLE_HTTP_REQUEST_FILE: ${process.env.LOG_ENABLE_HTTP_REQUEST_FILE}`,
+      );
+      this.logger.log(
+        `[HttpRequestLoggerMiddleware] LOG_ENABLE_HTTP_RESPONSE_FILE: ${process.env.LOG_ENABLE_HTTP_RESPONSE_FILE}`,
+      );
+    }
 
     // 检查是否启用HTTP请求日志
     const isEnabled = this.configService.get<boolean>(
@@ -52,9 +62,11 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
       true,
     );
 
-    this.logger.log(
-      `[HttpRequestLoggerMiddleware] Enabled: ${isEnabled}, ShouldSkip: ${this.shouldSkipLogging(req.path)}`,
-    );
+    if (enableConsole) {
+      this.logger.log(
+        `[HttpRequestLoggerMiddleware] Enabled: ${isEnabled}, ShouldSkip: ${this.shouldSkipLogging(req.path)}`,
+      );
+    }
 
     if (!isEnabled || this.shouldSkipLogging(req.path)) {
       return next();
@@ -118,6 +130,11 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
       'logging.httpRequestLogging.logSlowRequests',
       true,
     );
+    // 检查是否启用控制台日志
+    const enableConsole = this.configService.get<boolean>(
+      'logging.enableConsole',
+      true,
+    );
 
     const logData = {
       requestId,
@@ -142,12 +159,16 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
     setImmediate(() => {
       if (res.statusCode >= 500) {
         // 服务器错误 - 记录到错误日志、HTTP请求日志和HTTP响应日志
-        this.logger.error('HTTP请求服务器错误', undefined, logData);
+        if (enableConsole) {
+          this.logger.error('HTTP请求服务器错误', undefined, logData);
+        }
         this.logger.httpRequest('HTTP请求服务器错误', logData);
         this.logger.httpResponse('HTTP响应服务器错误', logData);
       } else if (res.statusCode >= 400) {
         // 客户端错误 - 记录到警告日志、HTTP请求日志和HTTP响应日志
-        this.logger.warn('HTTP请求客户端错误', logData);
+        if (enableConsole) {
+          this.logger.warn('HTTP请求客户端错误', logData);
+        }
         this.logger.httpRequest('HTTP请求客户端错误', logData);
         this.logger.httpResponse('HTTP响应客户端错误', logData);
       } else if (logSlowRequests && responseTime >= slowRequestThreshold) {
@@ -159,7 +180,9 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
             slowRequestWarning: true,
           },
         };
-        this.logger.warn('HTTP慢请求', slowRequestData);
+        if (enableConsole) {
+          this.logger.warn('HTTP慢请求', slowRequestData);
+        }
         this.logger.httpRequest('HTTP慢请求', slowRequestData);
         this.logger.httpResponse('HTTP响应慢请求', slowRequestData);
       } else {
