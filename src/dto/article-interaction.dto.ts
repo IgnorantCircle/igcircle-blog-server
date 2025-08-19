@@ -125,6 +125,57 @@ export class BatchCheckArticleInteractionDto {
 }
 
 /**
+ * 文章点赞操作响应DTO
+ */
+export class ArticleLikeResponseDto {
+  @ApiProperty({
+    description: '是否已点赞',
+    example: true,
+  })
+  isLiked: boolean;
+
+  @ApiProperty({
+    description: '操作结果消息',
+    example: '点赞成功',
+  })
+  message: string;
+}
+
+/**
+ * 文章收藏操作响应DTO
+ */
+export class ArticleFavoriteResponseDto {
+  @ApiProperty({
+    description: '是否已收藏',
+    example: true,
+  })
+  isFavorited: boolean;
+
+  @ApiProperty({
+    description: '操作结果消息',
+    example: '收藏成功',
+  })
+  message: string;
+}
+
+/**
+ * 文章交互状态响应DTO
+ */
+export class ArticleInteractionStatusDto {
+  @ApiProperty({
+    description: '是否已点赞',
+    example: true,
+  })
+  isLiked: boolean;
+
+  @ApiProperty({
+    description: '是否已收藏',
+    example: false,
+  })
+  isFavorited: boolean;
+}
+
+/**
  * 批量文章交互状态响应DTO
  */
 export class BatchArticleInteractionStatusDto {

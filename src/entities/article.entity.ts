@@ -14,6 +14,8 @@ import {
 } from 'typeorm';
 import { User } from './user.entity';
 import { Tag } from './tag.entity';
+import { Category } from './category.entity';
+import { Comment } from './comment.entity';
 
 @Entity('articles')
 export class Article {
@@ -102,11 +104,11 @@ export class Article {
   @Column({ type: 'varchar', nullable: true })
   categoryId: string;
 
-  @ManyToOne('Category', 'articles', {
+  @ManyToOne(() => Category, 'articles', {
     eager: true,
   })
   @JoinColumn({ name: 'categoryId' })
-  category: any;
+  category: Category;
 
   @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;
@@ -125,6 +127,6 @@ export class Article {
   author: User;
 
   // 评论关联
-  @OneToMany('Comment', 'article')
-  comments: any[];
+  @OneToMany(() => Comment, 'article')
+  comments: Comment[];
 }

@@ -191,6 +191,14 @@ export class CommentQueryDto extends BaseQueryDto {
   @IsBoolean()
   @Type(() => Boolean)
   topLevelOnly?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否返回文章标题',
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  includeArticleTitle?: boolean;
 }
 
 /**

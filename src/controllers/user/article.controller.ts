@@ -22,6 +22,11 @@ import { CurrentUser } from '@/decorators/user.decorator';
 import { Article } from '@/entities/article.entity';
 import { PaginatedResponse } from '@/common/interfaces/response.interface';
 import { PaginationUtil } from '@/common/utils/pagination.util';
+import {
+  ArticleLikeResponseDto,
+  ArticleFavoriteResponseDto,
+  ArticleInteractionStatusDto,
+} from '@/dto/article-interaction.dto';
 
 interface CurrentUserType {
   id: string;
@@ -45,19 +50,7 @@ export class UserArticleController {
   @ApiResponse({
     status: 200,
     description: '操作成功',
-    schema: {
-      type: 'object',
-      properties: {
-        isLiked: {
-          type: 'boolean',
-          description: '当前点赞状态',
-        },
-        message: {
-          type: 'string',
-          description: '操作结果消息',
-        },
-      },
-    },
+    type: ArticleLikeResponseDto,
   })
   async toggleLike(
     @Param('id', ParseUUIDPipe) articleId: string,
@@ -79,19 +72,7 @@ export class UserArticleController {
   @ApiResponse({
     status: 200,
     description: '操作成功',
-    schema: {
-      type: 'object',
-      properties: {
-        isFavorited: {
-          type: 'boolean',
-          description: '当前收藏状态',
-        },
-        message: {
-          type: 'string',
-          description: '操作结果消息',
-        },
-      },
-    },
+    type: ArticleFavoriteResponseDto,
   })
   async toggleFavorite(
     @Param('id', ParseUUIDPipe) articleId: string,
@@ -167,19 +148,7 @@ export class UserArticleController {
   @ApiResponse({
     status: 200,
     description: '获取成功',
-    schema: {
-      type: 'object',
-      properties: {
-        isLiked: {
-          type: 'boolean',
-          description: '是否已点赞',
-        },
-        isFavorited: {
-          type: 'boolean',
-          description: '是否已收藏',
-        },
-      },
-    },
+    type: ArticleInteractionStatusDto,
   })
   async getArticleStatus(
     @Param('id', ParseUUIDPipe) articleId: string,

@@ -22,6 +22,12 @@ import { BaseService } from '@/common/base/base.service';
 import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { PaginationUtil } from '@/common/utils/pagination.util';
+
+// 扩展Comment接口，添加articleTitle属性
+interface CommentWithArticleTitle extends Comment {
+  articleTitle?: string;
+}
+
 @Injectable()
 export class CommentService extends BaseService<Comment> {
   constructor(
@@ -122,9 +128,10 @@ export class CommentService extends BaseService<Comment> {
   /**
    * 分页查询评论
    */
-  async findAllComments(
-    query: CommentQueryDto,
-  ): Promise<{ comments: Comment[]; total: number }> {
+  async findAllComments(query: CommentQueryDto): Promise<{
+    comments: CommentWithArticleTitle[];
+    total: number;
+  }> {
     const {
       page = 1,
       limit = 10,
@@ -136,9 +143,15 @@ export class CommentService extends BaseService<Comment> {
       parentId,
       keyword,
       topLevelOnly,
+      includeArticleTitle,
     } = query;
 
     const queryBuilder = this.createQueryBuilder();
+
+    // 如果需要返回文章标题，添加文章表的JOIN
+    if (includeArticleTitle) {
+      queryBuilder.leftJoinAndSelect('comment.article', 'article');
+    }
 
     // 基础过滤条件
     if (articleId) {
@@ -172,8 +185,15 @@ export class CommentService extends BaseService<Comment> {
       });
     }
 
-    // 排序
-    queryBuilder.orderBy(`comment.${sortBy}`, sortOrder);
+    // 排序 - 验证sortBy字段是否有效
+    const validSortFields = [
+      'createdAt',
+      'updatedAt',
+      'likeCount',
+      'replyCount',
+    ];
+    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    queryBuilder.orderBy(`comment.${finalSortBy}`, sortOrder);
 
     // 分页
     const skip = PaginationUtil.calculateSkip(page, limit);
@@ -181,7 +201,18 @@ export class CommentService extends BaseService<Comment> {
 
     const [comments, total] = await queryBuilder.getManyAndCount();
 
-    return { comments, total };
+    // 如果需要返回文章标题，添加文章标题属性
+    if (includeArticleTitle) {
+      comments.forEach((comment) => {
+        if (comment.article) {
+          const { title, slug } = comment.article;
+
+          comment.article = { title, slug };
+        }
+      });
+    }
+
+    return { comments: comments as CommentWithArticleTitle[], total };
   }
 
   /**

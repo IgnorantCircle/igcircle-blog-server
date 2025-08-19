@@ -10,6 +10,7 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
 } from 'typeorm';
+import { Article } from './article.entity';
 
 @Entity('categories')
 export class Category {
@@ -51,8 +52,8 @@ export class Category {
   @OneToMany(() => Category, (category) => category.parent)
   children: Category[];
 
-  @OneToMany('Article', 'category')
-  articles: any[];
+  @OneToMany(() => Article, (article) => article.category)
+  articles: Article[];
 
   @Column({ type: 'int', default: 0 })
   articleCount: number; // 文章数量统计

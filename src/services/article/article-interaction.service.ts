@@ -221,27 +221,65 @@ export class ArticleInteractionService {
     page: number = 1,
     limit: number = 10,
   ): Promise<{ items: Article[]; total: number }> {
-    const queryBuilder = this.articleRepository
-      .createQueryBuilder('article')
-      .innerJoin(
-        ArticleLike,
-        'like',
-        'like.articleId = article.id AND like.userId = :userId',
-        { userId },
-      )
-      .leftJoinAndSelect('article.author', 'author')
-      .leftJoinAndSelect('article.category', 'category')
-      .leftJoinAndSelect('article.tags', 'tags')
-      .where('article.status = :status', { status: 'published' })
-      .orderBy('like.createdAt', 'DESC');
+    try {
+      // 先获取用户点赞的文章ID列表
+      const likedArticles = await this.articleLikeRepository.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+      });
 
-    const total = await queryBuilder.getCount();
-    const items = await queryBuilder
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getMany();
+      if (likedArticles.length === 0) {
+        return { items: [], total: 0 };
+      }
 
-    return { items, total };
+      const articleIds = likedArticles.map((like) => like.articleId);
+      const total = articleIds.length;
+
+      // 分页获取文章ID
+      const paginatedIds = articleIds.slice((page - 1) * limit, page * limit);
+
+      if (paginatedIds.length === 0) {
+        return { items: [], total };
+      }
+
+      // 根据ID获取文章详情
+      const items = await this.articleRepository.find({
+        where: {
+          id: In(paginatedIds),
+          status: 'published',
+        },
+        relations: ['author', 'category', 'tags'],
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+
+      // 按照点赞时间顺序重新排序
+      const orderedItems = paginatedIds
+        .map((id) => items.find((item) => item.id === id))
+        .filter(Boolean) as Article[];
+
+      this.logger.log({
+        message: `Retrieved ${orderedItems.length} liked articles for user ${userId}`,
+        userId,
+        total,
+      });
+
+      return { items: orderedItems, total };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack =
+        error instanceof Error ? error.stack : 'No stack trace';
+
+      this.logger.error({
+        message: `Error retrieving liked articles for user ${userId}`,
+        userId,
+        error: errorMessage,
+        stack: errorStack,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -256,26 +294,67 @@ export class ArticleInteractionService {
     page: number = 1,
     limit: number = 10,
   ): Promise<{ items: Article[]; total: number }> {
-    const queryBuilder = this.articleRepository
-      .createQueryBuilder('article')
-      .innerJoin(
-        ArticleFavorite,
-        'favorite',
-        'favorite.articleId = article.id AND favorite.userId = :userId',
-        { userId },
-      )
-      .leftJoinAndSelect('article.author', 'author')
-      .leftJoinAndSelect('article.category', 'category')
-      .leftJoinAndSelect('article.tags', 'tags')
-      .where('article.status = :status', { status: 'published' })
-      .orderBy('favorite.createdAt', 'DESC');
+    try {
+      // 先获取用户收藏的文章ID列表
+      const favoriteArticles = await this.articleFavoriteRepository.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+      });
 
-    const total = await queryBuilder.getCount();
-    const items = await queryBuilder
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getMany();
+      if (favoriteArticles.length === 0) {
+        return { items: [], total: 0 };
+      }
 
-    return { items, total };
+      const articleIds = favoriteArticles.map((favorite) => favorite.articleId);
+      const total = articleIds.length;
+
+      // 分页处理
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedIds = articleIds.slice(startIndex, endIndex);
+
+      if (paginatedIds.length === 0) {
+        return { items: [], total };
+      }
+
+      // 根据ID获取文章详情
+      const items = await this.articleRepository.find({
+        where: {
+          id: In(paginatedIds),
+          status: 'published',
+        },
+        relations: ['author', 'category', 'tags'],
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+
+      // 按照收藏时间顺序重新排序
+      const orderedItems = paginatedIds
+        .map((id) => items.find((item) => item.id === id))
+        .filter(Boolean) as Article[];
+
+      this.logger.log({
+        message: `Retrieved ${orderedItems.length} favorite articles for user ${userId}`,
+        userId,
+        total,
+      });
+
+      return { items: orderedItems, total };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack =
+        error instanceof Error ? error.stack : 'No stack trace';
+
+      this.logger.error({
+        message: `Error retrieving favorite articles for user ${userId}`,
+        userId,
+        error: errorMessage,
+        stack: errorStack,
+      });
+
+      throw error;
+    }
   }
 }
