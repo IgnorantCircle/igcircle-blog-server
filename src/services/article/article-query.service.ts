@@ -69,7 +69,9 @@ export class ArticleQueryService extends BaseService<Article> {
       options.isTop !== undefined ||
       options.keyword ||
       options.year ||
-      options.month
+      options.month ||
+      options.sortBy ||
+      options.sortOrder
     ) {
       return this.executeQuery(options, currentUser);
     }
@@ -98,7 +100,7 @@ export class ArticleQueryService extends BaseService<Article> {
       page = 1,
       limit = 10,
       tagIds,
-      sortBy = 'createdAt',
+      sortBy = 'publishedAt',
       sortOrder = 'DESC',
     } = options;
 
@@ -185,10 +187,9 @@ export class ArticleQueryService extends BaseService<Article> {
     const queryOptions: ArticleQueryOptions = {
       ...options,
       status: ArticleStatus.PUBLISHED,
-      sortBy: 'updatedAt',
+      sortBy: 'publishedAt',
       sortOrder: 'DESC',
     };
-
     return this.executeWithCache(
       () =>
         this.cacheManager.getRecentArticles() as Promise<ArticleQueryResult | null>,
@@ -207,7 +208,7 @@ export class ArticleQueryService extends BaseService<Article> {
       ...options,
       status: ArticleStatus.PUBLISHED,
       isFeatured: true,
-      sortBy: 'updatedAt',
+      sortBy: 'publishedAt',
       sortOrder: 'DESC',
     };
 
@@ -232,7 +233,7 @@ export class ArticleQueryService extends BaseService<Article> {
     const {
       page = 1,
       limit = 10,
-      sortBy = 'createdAt',
+      sortBy = 'publishedAt',
       sortOrder = 'DESC',
     } = options;
     const skip = PaginationUtil.calculateSkip(page, limit);
@@ -265,7 +266,7 @@ export class ArticleQueryService extends BaseService<Article> {
         .setParameter('titleKeyword', `%${keyword}%`)
         .setParameter('summaryKeyword', `%${keyword}%`)
         .orderBy('relevance', 'DESC')
-        .addOrderBy('article.updatedAt', 'DESC');
+        .addOrderBy('article.publishedAt', 'DESC');
     } else {
       queryBuilder.orderBy(`article.${sortBy}`, sortOrder);
     }
@@ -369,7 +370,7 @@ export class ArticleQueryService extends BaseService<Article> {
       status: ArticleStatus.PUBLISHED,
       page,
       limit,
-      sortBy: 'updatedAt',
+      sortBy: 'publishedAt',
       sortOrder: 'DESC',
     });
   }
@@ -387,7 +388,7 @@ export class ArticleQueryService extends BaseService<Article> {
       status: ArticleStatus.PUBLISHED,
       page,
       limit,
-      sortBy: 'updatedAt',
+      sortBy: 'publishedAt',
       sortOrder: 'DESC',
     });
   }

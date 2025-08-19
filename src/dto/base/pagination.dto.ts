@@ -47,11 +47,11 @@ export class PaginationDto {
 export class PaginationSortDto extends PaginationDto {
   @ApiPropertyOptional({
     description: '排序字段',
-    default: 'createdAt',
-    example: 'createdAt',
+    default: 'publishedAt',
+    example: 'publishedAt',
   })
   @IsOptional()
-  sortBy?: string = 'createdAt';
+  sortBy?: string = 'publishedAt';
 
   @ApiPropertyOptional({
     description: '排序方向',

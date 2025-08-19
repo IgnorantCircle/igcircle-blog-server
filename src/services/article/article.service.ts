@@ -195,7 +195,7 @@ export class ArticleService extends BaseService<Article> {
   ): Promise<{ items: Article[]; total: number }> {
     const options: ArticleQueryOptions = {
       ...query,
-      sortBy: query.sortBy || 'updatedAt',
+      sortBy: query.sortBy || 'publishedAt',
       sortOrder: query.sortOrder || 'DESC',
     };
     return this.articleQueryService.findAllPaginated(options);
