@@ -297,7 +297,13 @@ export class StructuredLoggerService implements LoggerService {
           maxFiles,
           maxSize: maxFileSize,
           format: winston.format.combine(
-            winston.format.timestamp(),
+            winston.format.timestamp({
+              format: () =>
+                new Date().toLocaleString('zh-CN', {
+                  timeZone: 'Asia/Shanghai',
+                  hour12: false,
+                }),
+            }),
             winston.format.printf((info) => this.formatFileOutput(info)),
           ),
         }),
@@ -312,7 +318,13 @@ export class StructuredLoggerService implements LoggerService {
           maxSize: maxFileSize,
           level: 'error',
           format: winston.format.combine(
-            winston.format.timestamp(),
+            winston.format.timestamp({
+              format: () =>
+                new Date().toLocaleString('zh-CN', {
+                  timeZone: 'Asia/Shanghai',
+                  hour12: false,
+                }),
+            }),
             winston.format.printf((info) => this.formatFileOutput(info)),
           ),
         }),
@@ -339,7 +351,13 @@ export class StructuredLoggerService implements LoggerService {
     return winston.createLogger({
       level: logLevel,
       format: winston.format.combine(
-        winston.format.timestamp(),
+        winston.format.timestamp({
+          format: () =>
+            new Date().toLocaleString('zh-CN', {
+              timeZone: 'Asia/Shanghai',
+              hour12: false,
+            }),
+        }),
         winston.format.errors({ stack: true }),
       ),
       transports,
@@ -353,7 +371,13 @@ export class StructuredLoggerService implements LoggerService {
               maxFiles,
               maxSize: maxFileSize,
               format: winston.format.combine(
-                winston.format.timestamp(),
+                winston.format.timestamp({
+                  format: () =>
+                    new Date().toLocaleString('zh-CN', {
+                      timeZone: 'Asia/Shanghai',
+                      hour12: false,
+                    }),
+                }),
                 winston.format.errors({ stack: true }),
                 winston.format.json(),
               ),
@@ -369,7 +393,13 @@ export class StructuredLoggerService implements LoggerService {
               maxFiles,
               maxSize: maxFileSize,
               format: winston.format.combine(
-                winston.format.timestamp(),
+                winston.format.timestamp({
+                  format: () =>
+                    new Date().toLocaleString('zh-CN', {
+                      timeZone: 'Asia/Shanghai',
+                      hour12: false,
+                    }),
+                }),
                 winston.format.errors({ stack: true }),
                 winston.format.json(),
               ),
@@ -388,7 +418,13 @@ export class StructuredLoggerService implements LoggerService {
       this.httpRequestLogger = winston.createLogger({
         level: 'info',
         format: winston.format.combine(
-          winston.format.timestamp(),
+          winston.format.timestamp({
+            format: () =>
+              new Date().toLocaleString('zh-CN', {
+                timeZone: 'Asia/Shanghai',
+                hour12: false,
+              }),
+          }),
           winston.format.printf((info) => this.formatFileOutput(info)),
         ),
         transports: [
@@ -406,7 +442,13 @@ export class StructuredLoggerService implements LoggerService {
       this.httpResponseLogger = winston.createLogger({
         level: 'info',
         format: winston.format.combine(
-          winston.format.timestamp(),
+          winston.format.timestamp({
+            format: () =>
+              new Date().toLocaleString('zh-CN', {
+                timeZone: 'Asia/Shanghai',
+                hour12: false,
+              }),
+          }),
           winston.format.printf((info) => this.formatFileOutput(info)),
         ),
         transports: [

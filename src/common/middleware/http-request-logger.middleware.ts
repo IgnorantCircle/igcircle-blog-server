@@ -141,15 +141,17 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
     // 异步记录日志，避免阻塞请求
     setImmediate(() => {
       if (res.statusCode >= 500) {
-        // 服务器错误 - 记录到错误日志和HTTP响应日志
+        // 服务器错误 - 记录到错误日志、HTTP请求日志和HTTP响应日志
         this.logger.error('HTTP请求服务器错误', undefined, logData);
+        this.logger.httpRequest('HTTP请求服务器错误', logData);
         this.logger.httpResponse('HTTP响应服务器错误', logData);
       } else if (res.statusCode >= 400) {
-        // 客户端错误 - 记录到警告日志和HTTP响应日志
+        // 客户端错误 - 记录到警告日志、HTTP请求日志和HTTP响应日志
         this.logger.warn('HTTP请求客户端错误', logData);
+        this.logger.httpRequest('HTTP请求客户端错误', logData);
         this.logger.httpResponse('HTTP响应客户端错误', logData);
       } else if (logSlowRequests && responseTime >= slowRequestThreshold) {
-        // 慢请求警告 - 记录到警告日志和HTTP请求日志
+        // 慢请求警告 - 记录到警告日志、HTTP请求日志和HTTP响应日志
         const slowRequestData = {
           ...logData,
           metadata: {
@@ -159,10 +161,10 @@ export class HttpRequestLoggerMiddleware implements NestMiddleware {
         };
         this.logger.warn('HTTP慢请求', slowRequestData);
         this.logger.httpRequest('HTTP慢请求', slowRequestData);
+        this.logger.httpResponse('HTTP响应慢请求', slowRequestData);
       } else {
-        // 正常请求 - 记录到HTTP请求日志
+        // 正常请求 - 记录到HTTP请求日志和HTTP响应日志
         this.logger.httpRequest('HTTP请求', logData);
-        // 正常响应 - 记录到HTTP响应日志
         this.logger.httpResponse('HTTP响应', logData);
       }
     });
