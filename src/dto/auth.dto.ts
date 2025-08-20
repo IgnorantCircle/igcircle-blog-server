@@ -202,3 +202,24 @@ export class PasswordResetResponseDto {
   @ApiProperty({ description: '消息' })
   message: string;
 }
+
+export class ChangePasswordDto {
+  @ApiProperty({ description: '当前密码' })
+  @IsString()
+  @IsNotEmpty()
+  currentPassword: string;
+
+  @ApiProperty({ description: '新密码' })
+  @IsString()
+  @IsNotEmpty()
+  newPassword: string;
+}
+
+export class ChangePasswordResponseDto {
+  @ApiProperty({ description: '是否成功' })
+  @Type(() => Boolean)
+  success: boolean;
+
+  @ApiProperty({ description: '消息' })
+  message: string;
+}

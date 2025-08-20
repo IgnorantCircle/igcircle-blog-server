@@ -623,4 +623,98 @@ export class UserService extends BaseService<User> {
       throw error;
     }
   }
+
+  /**
+   * 验证当前密码并更新为新密码
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<User> {
+    const startTime = Date.now();
+
+    try {
+      // 查找用户
+      const user = await this.findById(userId);
+      if (!user) {
+        this.logger.warn('修改密码失败：用户不存在', {
+          action: 'changePassword',
+          metadata: { userId },
+        });
+        throw new BusinessException(ErrorCode.USER_NOT_FOUND, '用户不存在');
+      }
+
+      // 验证当前密码
+      const isCurrentPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.password,
+      );
+      if (!isCurrentPasswordValid) {
+        this.logger.warn('修改密码失败：当前密码错误', {
+          action: 'changePassword',
+          metadata: { userId },
+        });
+        throw new BusinessException(
+          ErrorCode.USER_INVALID_CREDENTIALS,
+          '当前密码错误',
+        );
+      }
+
+      // 检查新密码是否与当前密码相同
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+      if (isSamePassword) {
+        this.logger.warn('修改密码失败：新密码与当前密码相同', {
+          action: 'changePassword',
+          metadata: { userId },
+        });
+        throw new BusinessException(
+          ErrorCode.USER_INVALID_CREDENTIALS,
+          '新密码不能与当前密码相同',
+        );
+      }
+
+      // 加密新密码
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // 更新密码
+      await this.userRepository.update(userId, {
+        password: hashedPassword,
+        updatedAt: new Date(),
+      });
+
+      // 获取更新后的用户信息
+      const updatedUser = await this.findById(userId);
+      if (!updatedUser) {
+        throw new BusinessException(ErrorCode.USER_NOT_FOUND, '用户更新失败');
+      }
+
+      // 清除该用户的所有令牌，强制重新登录
+      await this.clearAllUserTokens(userId);
+
+      const duration = Date.now() - startTime;
+      this.logger.business('用户密码修改成功', 'info', {
+        action: 'changePassword',
+        resource: 'user',
+        metadata: {
+          event: 'password_changed',
+          entityId: userId,
+          duration,
+        },
+      });
+
+      return updatedUser;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('用户密码修改失败', errorStack, {
+        action: 'changePassword',
+        resource: 'user',
+        metadata: { duration, error: errorMessage, userId },
+      });
+      throw error;
+    }
+  }
 }

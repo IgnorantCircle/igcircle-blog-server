@@ -34,6 +34,8 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   PasswordResetResponseDto,
+  ChangePasswordDto,
+  ChangePasswordResponseDto,
 } from '@/dto/auth.dto';
 import { CreateUserDto } from '@/dto/user.dto';
 import {
@@ -579,6 +581,75 @@ export class AuthController {
       throw new BusinessException(
         ErrorCode.COMMON_INTERNAL_ERROR,
         '密码重置失败',
+      );
+    }
+  }
+
+  @Post('change-password')
+  @UsePublicVisibility()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '修改密码' })
+  @ApiResponse({
+    status: 200,
+    description: '密码修改成功',
+    type: ChangePasswordResponseDto,
+  })
+  @ApiResponse({ status: 400, description: '当前密码错误或新密码无效' })
+  @ApiResponse({ status: 401, description: '未授权访问' })
+  async changePassword(
+    @Body() changePasswordDto: ChangePasswordDto,
+    @CurrentUser() user: { sub: string },
+  ): Promise<ChangePasswordResponseDto> {
+    try {
+      // 解密当前密码和新密码
+      const currentPassword = this.rsaService.decrypt(
+        changePasswordDto.currentPassword,
+      );
+      const newPassword = this.rsaService.decrypt(
+        changePasswordDto.newPassword,
+      );
+
+      this.logger.log('用户修改密码请求', {
+        action: 'changePassword',
+        metadata: { userId: user.sub },
+      });
+
+      // 调用用户服务修改密码
+      await this.userService.changePassword(
+        user.sub,
+        currentPassword,
+        newPassword,
+      );
+
+      this.logger.log('用户密码修改成功', {
+        action: 'changePassword',
+        metadata: { userId: user.sub },
+      });
+
+      return {
+        success: true,
+        message: '密码修改成功，请重新登录',
+      };
+    } catch (error) {
+      this.logger.error(
+        '用户密码修改失败',
+        error instanceof Error ? error.stack : undefined,
+        {
+          action: 'changePassword',
+          metadata: {
+            userId: user.sub,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          },
+        },
+      );
+
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+
+      throw new BusinessException(
+        ErrorCode.COMMON_INTERNAL_ERROR,
+        '密码修改失败',
       );
     }
   }

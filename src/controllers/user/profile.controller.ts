@@ -2,10 +2,16 @@ import {
   Controller,
   Get,
   Put,
+  Post,
   Body,
   UseGuards,
   UseInterceptors,
+  BadRequestException,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express';
+import * as multer from 'multer';
 
 import {
   ApiTags,
@@ -81,5 +87,59 @@ export class UserProfileController {
   ): Promise<UserStatistics> {
     const statistics = await this.userService.getUserStatistics(user.id);
     return statistics;
+  }
+
+  @Post('avatar')
+  @UseUserVisibility()
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 1024 * 1024, // 1MB
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ];
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              '只支持 jpeg、jpg、png、gif、webp 格式的图片',
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  @ApiOperation({ summary: '上传用户头像' })
+  @ApiResponse({
+    status: 200,
+    description: '头像上传成功',
+    type: UnifiedUserDto,
+  })
+  @ApiResponse({ status: 400, description: '头像文件过大或格式不正确' })
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<any> {
+    if (!file) {
+      throw new BadRequestException('请选择要上传的头像文件');
+    }
+
+    // 将文件转换为base64格式
+    const base64 = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+
+    // 更新用户头像
+    const updatedUser = await this.userService.update(user.id, {
+      avatar: base64,
+    });
+    return updatedUser;
   }
 }
