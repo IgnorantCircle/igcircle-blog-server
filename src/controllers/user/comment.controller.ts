@@ -248,13 +248,13 @@ export class UserCommentController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除评论' })
   @ApiParam({ name: 'id', description: '评论ID' })
-  @ApiResponse({ status: 204, description: '评论删除成功' })
+  @ApiResponse({ status: 200, description: '评论删除成功' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<null> {
+  ): Promise<any> {
     await this.commentService.remove(id, user.id, false);
-    return null;
+    return { message: '评论删除成功' };
   }
 
   @Post(':id/like')

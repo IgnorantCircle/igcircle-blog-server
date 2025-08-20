@@ -265,13 +265,13 @@ export class AdminCommentController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: '删除评论（管理员）' })
   @ApiParam({ name: 'id', description: '评论ID' })
-  @ApiResponse({ status: 204, description: '评论删除成功' })
+  @ApiResponse({ status: 200, description: '评论删除成功' })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
-  ): Promise<null> {
+  ): Promise<any> {
     await this.commentService.remove(id, user.id, true);
-    return null;
+    return { message: '评论删除成功' };
   }
 
   @Post('batch-hide')
