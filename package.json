@@ -40,6 +40,7 @@
     "cache-manager": "^7.1.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "dotenv": "^17.2.1",
     "gray-matter": "^4.0.3",
     "mysql2": "^3.14.3",
     "nodemailer": "^7.0.5",
@@ -50,7 +51,8 @@
     "typeorm": "^0.3.25",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "multer":"^2.0.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
