@@ -28,6 +28,7 @@ import { CategoryService } from '../category.service';
 import { ConfigService } from '@nestjs/config';
 import { StructuredLoggerService } from '@/common/logger/structured-logger.service';
 import { BlogCacheService } from '@/common/cache/blog-cache.service';
+import readingTime from 'reading-time';
 
 @Injectable()
 export class ArticleService extends BaseService<Article> {
@@ -53,6 +54,14 @@ export class ArticleService extends BaseService<Article> {
     super(articleRepository, 'article', configService, logger);
   }
 
+  /**
+   * 计算阅读时间
+   * 使用 reading-time 库计算
+   */
+  private calculateReadingTime(content: string): number {
+    const stats = readingTime(content);
+    return stats.minutes;
+  }
   // 创建文章
   async create(createArticleDto: CreateArticleDto): Promise<Article>;
   async create(entityData: Partial<Article>): Promise<Article>;
@@ -83,11 +92,19 @@ export class ArticleService extends BaseService<Article> {
       return this.dataSource.transaction(async (manager) => {
         // 设置默认状态
         const status = articleData.status || 'draft';
+        // 计算阅读时间（优先使用前端传入的值）
+        const readingTime =
+          articleData.readingTime !== undefined
+            ? articleData.readingTime
+            : articleData.content
+              ? this.calculateReadingTime(articleData.content)
+              : 5;
         // 构建文章创建数据
         const articleCreateData: any = {
           ...articleData,
           slug: finalSlug,
           status,
+          readingTime,
         };
 
         const article = manager.create(Article, articleCreateData);
@@ -138,6 +155,11 @@ export class ArticleService extends BaseService<Article> {
       });
     } else {
       const entityData = createDataOrDto as Partial<Article>;
+      // 计算阅读时间（优先使用传入的值）
+      if (entityData.readingTime === undefined && entityData.content) {
+        entityData.readingTime =
+          this.calculateReadingTime(entityData.content) || 5;
+      }
       const article = this.repository.create(entityData);
       const savedArticle = await this.repository.save(article);
 
@@ -244,31 +266,13 @@ export class ArticleService extends BaseService<Article> {
         }
       }
 
-      // 限制作者只能修改特定字段
-      const allowedFields = [
-        'title',
-        'summary',
-        'content',
-        'slug',
-        'coverImage',
-        'metaDescription',
-        'metaKeywords',
-        'socialImage',
-        'allowComments',
-        'categoryId',
-      ];
-
-      const filteredUpdateData: { [key: string]: any } = {};
-      for (const field of allowedFields) {
-        if (
-          updateArticleDto[field as keyof typeof updateArticleDto] !== undefined
-        ) {
-          filteredUpdateData[field] =
-            updateArticleDto[field as keyof typeof updateArticleDto];
-        }
+      // 计算阅读时间（优先使用前端传入的值，没有传入且内容有更新时才自动计算）
+      const updateData = { ...updateArticleDto };
+      if (updateData.readingTime === undefined && updateData.content) {
+        updateData.readingTime = this.calculateReadingTime(updateData.content);
       }
 
-      updatedArticle = this.repository.merge(article, filteredUpdateData);
+      updatedArticle = this.repository.merge(article, updateData);
     } else {
       // 直接使用Partial<Article>类型
       updatedArticle = this.repository.merge(
