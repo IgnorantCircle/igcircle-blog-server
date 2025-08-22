@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, MoreThanOrEqual } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { User } from '@/entities/user.entity';
 import { CreateUserDto, UserStatus, UserRole } from '@/dto/user.dto';
@@ -182,22 +182,37 @@ export class UserService extends BaseService<User> {
     activeUsers: number;
     adminUsers: number;
     inactiveUsers: number;
+    onlineUsers: number;
+    bannedUsers: number;
   }> {
-    const [total, activeUsers, adminUsers] = await Promise.all([
-      this.userRepository.count(),
-      this.userRepository.count({
-        where: { status: 'active' },
-      }),
-      this.userRepository.count({
-        where: { role: 'admin' },
-      }),
-    ]);
+    const [total, activeUsers, adminUsers, onlineUsers, bannedUsers] =
+      await Promise.all([
+        this.userRepository.count(),
+        this.userRepository.count({
+          where: { status: 'active' },
+        }),
+        this.userRepository.count({
+          where: { role: 'admin' },
+        }),
+        this.userRepository.count({
+          where: {
+            lastActiveAt: MoreThanOrEqual(
+              new Date(Date.now() - 15 * 60 * 1000),
+            ), // 15分钟内活跃的用户视为在线
+          },
+        }),
+        this.userRepository.count({
+          where: { status: 'banned' },
+        }),
+      ]);
 
     return {
       total,
       activeUsers,
       adminUsers,
       inactiveUsers: total - activeUsers,
+      onlineUsers,
+      bannedUsers,
     };
   }
 
@@ -208,9 +223,6 @@ export class UserService extends BaseService<User> {
 
   // 获取用户个人统计信息
   async getUserStatistics(userId: string): Promise<{
-    totalArticles: number;
-    publishedArticles: number;
-    draftArticles: number;
     totalViews: number;
     totalLikes: number;
     totalShares: number;
@@ -222,9 +234,6 @@ export class UserService extends BaseService<User> {
     }
 
     const stats = {
-      totalArticles: 0, // 总文章数
-      publishedArticles: 0, // 已发布文章数
-      draftArticles: 0, // 草稿文章数
       totalViews: 0, // 总浏览量
       totalLikes: 0, // 总点赞数
       totalShares: 0, // 总分享数
