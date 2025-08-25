@@ -317,32 +317,23 @@ export class ArticleQueryService extends BaseService<Article> {
 
   /**
    * 获取归档统计数据
+   * 只统计年月的总文章数，不关联分类和标签
    */
-  async getArchiveStats(
-    currentUser?: CurrentUser,
-  ): Promise<{ year: number; month: number; count: number }[]> {
-    const queryBuilder = this.createOptimizedQueryBuilder('stats')
+  async getArchiveStats(): Promise<
+    { year: number; month: number; count: number }[]
+  > {
+    const result = await this.articleRepository
+      .createQueryBuilder('article')
       .select('YEAR(article.publishedAt)', 'year')
       .addSelect('MONTH(article.publishedAt)', 'month')
       .addSelect('COUNT(article.id)', 'count')
-      .andWhere('article.publishedAt IS NOT NULL')
+      .where('article.publishedAt IS NOT NULL')
+      .andWhere('article.status = :status', { status: ArticleStatus.PUBLISHED })
+      .andWhere('article.isVisible = :isVisible', { isVisible: true })
       .groupBy('year, month')
       .orderBy('year', 'DESC')
-      .addOrderBy('month', 'DESC');
-
-    // 使用统一的过滤方法
-    // 归档统计接口强制只返回已发布文章，所以这是用户端查询
-    const isAdminQuery = currentUser?.role === 'admin';
-    this.applyFilters(
-      queryBuilder,
-      {
-        status: ArticleStatus.PUBLISHED,
-        isVisible: true,
-      },
-      isAdminQuery,
-    );
-
-    const result = await queryBuilder.getRawMany();
+      .addOrderBy('month', 'DESC')
+      .getRawMany();
 
     return result.map(
       (item: {
@@ -458,7 +449,7 @@ export class ArticleQueryService extends BaseService<Article> {
 
     const articles = await queryBuilder.getMany();
 
-    // 如果相关文章不够，补充同作者的文章
+    // 如果相关文章不够，补充其他同类型文章
     if (articles.length < limit) {
       const remainingLimit = limit - articles.length;
       const existingIds = articles.map((a) => a.id);
